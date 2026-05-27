@@ -66,6 +66,26 @@ class SkipFirstN : public SubsysReco {
   int target_ = 0;
   int count_  = 0;
 };
+//.x Fun4All_raw_hit_ZeroField_frog.C(10, 81000, 0, ".", 0, "run3pp", "ana537_nocdbtag_v001","HITS_ppZeroField")
+//.x Fun4All_raw_hit_ZeroField_frog.C(10, 81000, 0, ".", 0, "run3pp", "ana537_nocdbtag_v001","HITS_ppZeroField")
+
+
+//.x Fun4All_raw_hit_ZeroField_frog.C(3, 79513, 0, ".", 0, "run3pp", "ana537_nocdbtag_v001","HITS_ppFieldOn")
+
+//==========AuAu Zero Field
+// 111x111   75555-75557 - 1mrad; 75557 - 0mrad
+//.x Fun4All_raw_hit_ZeroField_frog.C(10, 75555, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu_ZeroField_1mrad")
+
+// 6x6       75570-75573 - 1mrad; 75574 - 0mrad
+//.x Fun4All_raw_hit_ZeroField_frog.C(10, 75570, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu_ZeroField_1mrad")
+//.x Fun4All_raw_hit_ZeroField_frog.C(10, 75574, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu_ZeroField_0mrad")
+
+//.x Fun4All_raw_hit_ZeroField_frog.C(10, 75396, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu")
+//.x Fun4All_raw_hit_ZeroField_frog.C(2, 75405, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu")
+
+//.x Fun4All_raw_hit_ZeroField_frog.C(3, 82626, 0, ".", 0, "run3oo", "ana537_nocdbtag_v001","HITS_OO")
+//.x Fun4All_raw_hit_ZeroField_frog.C(10, 79767, 0, ".", 0, "run3cosmics", "ana523_nocdbtag_v001","HITS_cosmics")
+//.x Fun4All_raw_hit_ZeroField_frog.C(10, 83174, 0, ".", 0, "run3line_laser", "ana540_nocdbtag_v001","HITS_line_laser")
 
 void Fun4All_raw_hit_ZeroField_frog(
     const int nEvents = 10,
@@ -73,20 +93,18 @@ void Fun4All_raw_hit_ZeroField_frog(
     const int segment = 0,
     const std::string outdir = ".",
     const int nSkip = 0,
-    const std::string& outfilename = "clusters_seeds")
+    const std::string collision = "run3pp",
+    const std::string production = "ana537_nocdbtag_v001",
+    const std::string& outfilename = "HITS_clusters_seeds")
 {
   const bool convertSeeds = true;
   auto *se = Fun4AllServer::instance();
   se->Verbosity(1);
   auto *rc = recoConsts::instance();
   se->registerSubsystem(new SkipFirstN(nSkip));
-  // input manager for QM production raw hit DST file
-   rc->set_IntFlag("RUNNUMBER", runnumber);
-  rc->set_uint64Flag("TIMESTAMP", runnumber);
 
   const std::string dsttype = "STREAMING_EVENT";
-  const std::string collision = "run3pp";
-  const std::string production = "ana537_nocdbtag_v001";
+
 
   std::ostringstream runstr;
   runstr << std::setw(8) << std::setfill('0') << runnumber;
@@ -98,10 +116,7 @@ void Fun4All_raw_hit_ZeroField_frog(
   const int runnext = runbase + 100;
 
   std::ostringstream rundir;
-  rundir << "run_"
-         << std::setw(8) << std::setfill('0') << runbase
-         << "_"
-         << std::setw(8) << std::setfill('0') << runnext;
+  rundir << "run_" << std::setw(8) << std::setfill('0') << runbase << "_" << std::setw(8) << std::setfill('0') << runnext;
 
   std::vector<std::string> streams;
 
@@ -115,7 +130,8 @@ void Fun4All_raw_hit_ZeroField_frog(
       streams.push_back(s.str());
     }
   }
-
+if(collision!="run3line_laser"&&collision!="run3cosmics")
+{
   // TPOT
   streams.push_back("ebdc39");
 
@@ -134,6 +150,7 @@ void Fun4All_raw_hit_ZeroField_frog(
     s << "mvtx" << felix;
     streams.push_back(s.str());
   }
+}
 
   int i = 0;
 
@@ -237,7 +254,7 @@ void Fun4All_raw_hit_ZeroField_frog(
   Reject_Laser_Events();
 
   se->registerSubsystem( new InModuleTracks());
-  se->registerSubsystem( new InModuleTrackDisplay());
+  se->registerSubsystem( new InModuleTrackDisplay( "InModuleTrackDisplay", "inmodule_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
 
    
  //std::cout<< "Output DST "<<Form("%s/output_DST/%s_%d_%d.root",outdir.c_str(), outfilename.c_str(), runnumber, segment)  << std::endl;

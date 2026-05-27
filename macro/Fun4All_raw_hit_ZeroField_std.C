@@ -89,9 +89,9 @@ class SkipFirstN : public SubsysReco {
 void Fun4All_raw_hit_ZeroField_std(
     const int nEvents = 10,
     const std::string& filelist = "/sphenix/user/mitrankova/pp2025/ZeroField/macro/filelists_81000/filelist_00081000_00000.list",
-    const std::string outdir = ".",
+    const std::string outdir = "./",
     const int nSkip = 0,
-    const std::string& outfilename = "clusters_seeds",
+    const std::string& outfilename = "STD_clusters_seeds",
     const bool convertSeeds = true)
 {
   auto *se = Fun4AllServer::instance();
