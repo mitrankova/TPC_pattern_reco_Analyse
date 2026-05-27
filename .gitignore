@@ -31,3 +31,7 @@ InModuleTrackDisplay/missing
 LoadCheck/
 TPC_pattern_reco/
 macro/plots/
+
+# image/text outputs
+*.png
+*.txt
