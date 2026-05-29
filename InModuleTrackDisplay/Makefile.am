@@ -16,16 +16,20 @@ AM_LDFLAGS = \
   -L$(OFFLINE_MAIN)/lib64
 
 pkginclude_HEADERS = \
-  InModuleTrackDisplay.h
+  InModuleTrackDisplay.h \
+  FullTrackDisplay.h
 
 lib_LTLIBRARIES = \
   libInModuleTrackDisplay.la
 
 libInModuleTrackDisplay_la_SOURCES = \
-  InModuleTrackDisplay.cc
+  InModuleTrackDisplay.cc \
+  FullTrackDisplay.cc
 
 libInModuleTrackDisplay_la_LIBADD = \
   -lInModuleTracks \
+  -lffamodules \
+  -lcdbobjects \
   -lphool \
   -lfun4all \
   -lg4detectors \
