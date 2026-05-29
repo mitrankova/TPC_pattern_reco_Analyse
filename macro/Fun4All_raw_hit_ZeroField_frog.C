@@ -39,8 +39,9 @@
 #include <phool/recoConsts.h>
 
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/InModuleTracks.h>
-
+#include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/FullTrackConnector.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/InModuleTrackDisplay.h>
+#include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/FullTrackDisplay.h>
 
 
 R__LOAD_LIBRARY(libfun4all.so)
@@ -253,8 +254,11 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
 
   Reject_Laser_Events();
 
+
   se->registerSubsystem( new InModuleTracks());
-  se->registerSubsystem( new InModuleTrackDisplay( "InModuleTrackDisplay", "inmodule_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
+  se->registerSubsystem( new FullTrackConnector());
+  //se->registerSubsystem( new InModuleTrackDisplay( "InModuleTrackDisplay", "inmodule_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
+  se->registerSubsystem( new FullTrackDisplay( "FullTrackDisplay", "full_track_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
 
    
  //std::cout<< "Output DST "<<Form("%s/output_DST/%s_%d_%d.root",outdir.c_str(), outfilename.c_str(), runnumber, segment)  << std::endl;
@@ -266,7 +270,7 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
   out->AddNode("INMODULETRACKS");
   out->AddRunNode("TPCGEOMCONTAINER");
 
-  se->registerOutputManager(out);
+  //se->registerOutputManager(out);
   
   se->run(nEvents+nSkip);
   se->Print("NODETREE");
