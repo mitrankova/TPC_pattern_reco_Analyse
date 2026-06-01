@@ -38,6 +38,7 @@
 
 #include <phool/recoConsts.h>
 
+#include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/TpcPadMapBuilder.h>
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/InModuleTracks.h>
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/FullTrackConnector.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/InModuleTrackDisplay.h>
@@ -84,7 +85,7 @@ class SkipFirstN : public SubsysReco {
 //.x Fun4All_raw_hit_ZeroField_frog.C(10, 75396, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu")
 //.x Fun4All_raw_hit_ZeroField_frog.C(2, 75405, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu")
 
-//.x Fun4All_raw_hit_ZeroField_frog.C(3, 82626, 0, ".", 0, "run3oo", "ana537_nocdbtag_v001","HITS_OO")
+//.x Fun4All_raw_hit_ZeroField_frog.C(2, 82626, 0, ".", 0, "run3oo", "ana537_nocdbtag_v001","HITS_OO")
 //.x Fun4All_raw_hit_ZeroField_frog.C(10, 79767, 0, ".", 0, "run3cosmics", "ana523_nocdbtag_v001","HITS_cosmics")
 //.x Fun4All_raw_hit_ZeroField_frog.C(10, 83174, 0, ".", 0, "run3line_laser", "ana540_nocdbtag_v001","HITS_line_laser")
 
@@ -255,8 +256,16 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
   Reject_Laser_Events();
 
 
+  se->registerSubsystem(new TpcPadMapBuilder("TpcPadMapBuilder", "TPC_PADMAP"));
   se->registerSubsystem( new InModuleTracks());
   se->registerSubsystem( new FullTrackConnector());
+    FullTrackConnector* fullconn = new FullTrackConnector("FullTrackConnector", "FullTracks.root");
+    fullconn->setConnectMaxLayerGap(17);
+    //fullconn->setConnectWindow(0.08, 20.0);
+    //fullconn->setConnectSlopeWindow(5.0, 0.03);
+    se->registerSubsystem(fullconn);
+
+
   //se->registerSubsystem( new InModuleTrackDisplay( "InModuleTrackDisplay", "inmodule_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
   se->registerSubsystem( new FullTrackDisplay( "FullTrackDisplay", "full_track_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
 

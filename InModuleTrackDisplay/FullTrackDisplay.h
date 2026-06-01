@@ -43,8 +43,8 @@ class FullTrackDisplay : public SubsysReco
     unsigned int tbin;
     unsigned short adc;
 
-    double local_phi;
-    double local_radius;
+    double global_phi;
+    double radius;
   };
 
   bool get_nodes(PHCompositeNode* topNode);

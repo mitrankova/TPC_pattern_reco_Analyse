@@ -1,5 +1,7 @@
 #include "InModuleTrackDisplay.h"
 
+#include "TpcPadMap.h"
+
 #include "InModuleTrack.h"
 #include "InModuleTrackContainer.h"
 
@@ -106,64 +108,45 @@ namespace
   }
 
 
-  // Local coordinate convention matching InModuleTracks:
-  //   local_phi    = pad * phi_bin_width[module]
-  //   local_radius = module_radius[module][local row]
-  static const int N_MODULES_LOCAL = 3;
-  static const int N_ROWS_LOCAL = 16;
-
-  static const int NpadsLocal[N_MODULES_LOCAL] = {94, 128, 192};
-
-  static const double phi_bin_width_local[N_MODULES_LOCAL] =
+  // Convert the in-module fit coordinate (sector-local phi) to global TPC phi.
+  // InModuleTracks still fits in local module coordinates; only the display is global.
+  double local_phi_to_global_phi(const TpcPadMap* padMap,
+                                 const int side,
+                                 const int sector,
+                                 const unsigned int region,
+                                 const double local_phi)
   {
-    0.0053073,
-    0.003959,
-    0.00265145
-  };
+    if (!padMap) return 0.0;
 
-  static const double module_radius_local[N_MODULES_LOCAL][N_ROWS_LOCAL] =
-  {
-    {
-      29.854978828112735, 31.869737083177956, 32.43665978627038,
-      33.00171100689825,  33.56863172731403,  34.133682357783,
-      34.70060474122243,  35.26565540941076,  35.83257683544541,
-      36.39762877363545,  36.964549975549694, 37.52960055896088,
-      38.09652180558749,  38.66157293473739,  39.228495272708216,
-      39.793545257944906
-    },
-    {
-      41.65920253621078,  42.67990048015332,  43.7005755287188,
-      44.7212729094545,   45.7419615067264,   46.76264656230158,
-      47.78333428983602,  48.80401878201343,  49.82471910526506,
-      50.8454060012135,   51.866093793785126, 52.88677964073831,
-      53.90746625152035,  54.92815969895385,  55.948864895868056,
-      56.9695394315422
-    },
-    {
-      58.910963349324035, 60.00800996331871,  61.10505851260341,
-      62.202104676954924, 63.29915863086735,  64.39619682986867,
-      65.49324606923312,  66.59029899562653,  67.68734047670296,
-      68.78439383353172,  69.88143340055497,  70.97848786511186,
-      72.07553264226554,  73.17257662017182,  74.2696338511705,
-      75.36667517343196
-    }
-  };
+    const double phi_width = padMap->get_phi_bin_width(region);
+    const unsigned int pads_per_sector = padMap->get_pads_per_sector(region);
 
-  double get_local_phi_display(const unsigned int module, const unsigned int pad)
-  {
-    if (module >= static_cast<unsigned int>(N_MODULES_LOCAL)) return 0.0;
-    return static_cast<double>(pad) * phi_bin_width_local[module];
+    if (phi_width <= 0.0 || pads_per_sector == 0U) return 0.0;
+
+    const double local_pad = local_phi / phi_width;
+    const double full_pad =
+      static_cast<double>(sector) * static_cast<double>(pads_per_sector) +
+      local_pad;
+
+    return padMap->get_global_phi(static_cast<unsigned int>(side),
+                                  region,
+                                  full_pad);
   }
 
-  double get_local_radius_display(const unsigned int module, const unsigned int layer)
+  double local_phi_to_full_pad(const TpcPadMap* padMap,
+                               const int sector,
+                               const unsigned int region,
+                               const double local_phi)
   {
-    if (module >= static_cast<unsigned int>(N_MODULES_LOCAL)) return 0.0;
+    if (!padMap) return 0.0;
 
-    const int ilayer =
-      static_cast<int>(layer) - 7 - static_cast<int>(module) * 16;
+    const double phi_width = padMap->get_phi_bin_width(region);
+    const unsigned int pads_per_sector = padMap->get_pads_per_sector(region);
 
-    if (ilayer < 0 || ilayer >= N_ROWS_LOCAL) return 0.0;
-    return module_radius_local[module][ilayer];
+    if (phi_width <= 0.0 || pads_per_sector == 0U) return 0.0;
+
+    return static_cast<double>(sector) * static_cast<double>(pads_per_sector) +
+           local_phi / phi_width;
   }
 
 
@@ -214,7 +197,7 @@ namespace
     const double s = std::sin(theta);
 
     // Sagitta parameters are fitted in the 2D plane:
-    //   x = local radius, y = local phi.
+    //   x = radius, y = local phi.
     // weighted_sagitta_fit first rotates that plane:
     //   xrot =  cos(theta)*x + sin(theta)*(y - bline)
     //   yrot = -sin(theta)*x + cos(theta)*(y - bline)
@@ -345,10 +328,10 @@ namespace
       , mg_pad_layer_fits(0)
       , h3_adc_hits(0)
       , h3_adc_unassociated_hits(0)
-      , h3_adc_local_hits(0)
+      , h3_adc_globalphi_hits(0)
       , c3_adc_hits_fits(0)
       , c3_adc_unassociated_hits(0)
-      , c3_adc_local_hits_fits(0)
+      , c3_adc_globalphi_hits_fits(0)
     {}
 
     TMultiGraph* mg_tbin_pad_hits;
@@ -365,20 +348,20 @@ namespace
     TH3D* h3_adc_hits;                  // hits associated with tracks
     TH3D* h3_adc_unassociated_hits;     // TRKR_HITSET hits not associated with any track
 
-    // Local-coordinate 3D hit display:
-    //   x = timebin, y = local phi, z = local radius
+    // Global-phi 3D hit display:
+    //   x = timebin, y = global phi, z = radius
     //   bin content = ADC-weighted hit entries
-    TH3D* h3_adc_local_hits;
+    TH3D* h3_adc_globalphi_hits;
 
     TCanvas* c3_adc_hits_fits;
     TCanvas* c3_adc_unassociated_hits;
-    TCanvas* c3_adc_local_hits_fits;
+    TCanvas* c3_adc_globalphi_hits_fits;
 
     std::vector<TPolyLine3D*> fit_lines_3d;
     std::vector<std::string> fit_line_names_3d;
 
-    std::vector<TPolyLine3D*> local_fit_lines_3d;
-    std::vector<std::string> local_fit_line_names_3d;
+    std::vector<TPolyLine3D*> globalphi_fit_lines_3d;
+    std::vector<std::string> globalphi_fit_line_names_3d;
 
     // avoid filling the same hit more than once if tracks share hits
     std::set<unsigned long long> filled_hit_ids;
@@ -386,7 +369,8 @@ namespace
 
   void make_bundle_graphs(GraphBundle& b,
                           const GroupKey& key,
-                          const unsigned int evt)
+                          const unsigned int evt,
+                          const TpcPadMap* padMap)
   {
     const TString tag = Form("s%d_sec%02d_mod%d",
                              key.side, key.sector, key.module);
@@ -423,42 +407,37 @@ namespace
 
     const int layer_min = 7 + 16 * key.module;
     const int layer_max = layer_min + 15;
-    unsigned int Npads[3] = {94, 128, 192};
-    const int pad_min =  Npads[key.module]*key.sector;
-    const int pad_max =  pad_min + (Npads[key.module]-1);
+    const unsigned int nPads = padMap ? padMap->get_pads_per_sector(static_cast<unsigned int>(key.module)) : 0U;
+    const int pad_min = static_cast<int>(nPads) * key.sector;
+    const int pad_max = pad_min + static_cast<int>(nPads) - 1;
 
     b.h3_adc_hits = new TH3D(Form("h3_%s_adc_hits", tag.Data()),
                              Form("event %u side %d sector %d module %d: ADC-weighted hits;timebin;pad;layer",
                                   evt, key.side, key.sector, key.module),
                              512, -0.5, 511.5,
-                             Npads[key.module], static_cast<double>(pad_min) - 0.5, static_cast<double>(pad_max) + 0.5,
+                             static_cast<int>(nPads), static_cast<double>(pad_min) - 0.5, static_cast<double>(pad_max) + 0.5,
                              16, static_cast<double>(layer_min) - 0.5,
                              static_cast<double>(layer_max) + 0.5);
 
     b.h3_adc_hits->SetStats(0);
 
-    const double local_radius_min =
-      module_radius_local[key.module][0] - 0.5;
-    const double local_radius_max =
-      module_radius_local[key.module][N_ROWS_LOCAL - 1] + 0.5;
-    // Use sector-offset/global pad range, consistent with the existing
-    // hardware-coordinate canvas.  This prevents local fit lines from being
-    // outside the TH3D y-axis range when TpcDefs::getPad(hitkey) is not reset
-    // to zero at each sector.
-    const double local_phi_min =
-      (static_cast<double>(pad_min) - 0.5) * phi_bin_width_local[key.module];
-    const double local_phi_max =
-      (static_cast<double>(pad_max) + 0.5) * phi_bin_width_local[key.module];
+    const double radius_min =
+      padMap ? padMap->get_local_radius(static_cast<unsigned int>(key.module), static_cast<unsigned int>(layer_min)) - 0.5 : 0.0;
+    const double radius_max =
+      padMap ? padMap->get_local_radius(static_cast<unsigned int>(key.module), static_cast<unsigned int>(layer_max)) + 0.5 : 1.0;
 
-    b.h3_adc_local_hits =
-      new TH3D(Form("h3_%s_adc_local_hits", tag.Data()),
-               Form("event %u side %d sector %d module %d: ADC-weighted hits in local coordinates;timebin;local #phi;local radius",
+    const double global_phi_min = -TMath::Pi();
+    const double global_phi_max =  TMath::Pi();
+
+    b.h3_adc_globalphi_hits =
+      new TH3D(Form("h3_%s_adc_global_hits", tag.Data()),
+               Form("event %u side %d sector %d module %d: ADC-weighted hits in global coordinates;timebin;global #phi;radius",
                     evt, key.side, key.sector, key.module),
                512, -0.5, 511.5,
-               NpadsLocal[key.module], local_phi_min, local_phi_max,
-               16, local_radius_min, local_radius_max);
+               720, global_phi_min, global_phi_max,
+               16, radius_min, radius_max);
 
-    b.h3_adc_local_hits->SetStats(0);
+    b.h3_adc_globalphi_hits->SetStats(0);
 
 
     b.h3_adc_unassociated_hits =
@@ -466,7 +445,7 @@ namespace
             Form("event %u side %d sector %d module %d: ADC-weighted unassociated TRKR_HITSET hits;timebin;pad;layer",
                   evt, key.side, key.sector, key.module),
             512, -0.5, 511.5,
-             Npads[key.module], static_cast<double>(pad_min) - 0.5, static_cast<double>(pad_max) + 0.5,
+             static_cast<int>(nPads), static_cast<double>(pad_min) - 0.5, static_cast<double>(pad_max) + 0.5,
             16, static_cast<double>(layer_min) - 0.5,
             static_cast<double>(layer_max) + 0.5);
 
@@ -478,7 +457,8 @@ namespace
 
   GraphBundle& get_bundle(std::map<GroupKey, GraphBundle>& bundles,
                           const GroupKey& key,
-                          const unsigned int evt)
+                          const unsigned int evt,
+                          const TpcPadMap* padMap)
   {
     std::map<GroupKey, GraphBundle>::iterator it = bundles.find(key);
 
@@ -488,7 +468,7 @@ namespace
         bundles.insert(std::make_pair(key, GraphBundle()));
 
       it = inserted.first;
-      make_bundle_graphs(it->second, key, evt);
+      make_bundle_graphs(it->second, key, evt, padMap);
     }
 
     return it->second;
@@ -527,29 +507,29 @@ namespace
         b.c3_adc_hits_fits->Write();
       }
 
-      if (b.h3_adc_local_hits)
+      if (b.h3_adc_globalphi_hits)
       {
         const TString tag = Form("s%d_sec%02d_mod%d",
                                 key.side, key.sector, key.module);
 
-        b.c3_adc_local_hits_fits =
-          new TCanvas(Form("c3_%s_adc_local_hits_fits", tag.Data()),
-                      Form("side %d sector %d module %d ADC hits and local fits",
+        b.c3_adc_globalphi_hits_fits =
+          new TCanvas(Form("c3_%s_adc_globalphi_hits_fits", tag.Data()),
+                      Form("side %d sector %d module %d ADC hits and global-phi fits",
                             key.side, key.sector, key.module),
                       1200, 900);
 
-        b.h3_adc_local_hits->Draw("BOX2Z");
+        b.h3_adc_globalphi_hits->Draw("BOX2Z");
 
-        for (unsigned int iline = 0; iline < b.local_fit_lines_3d.size(); ++iline)
+        for (unsigned int iline = 0; iline < b.globalphi_fit_lines_3d.size(); ++iline)
         {
-          if (!b.local_fit_lines_3d[iline]) continue;
-          b.local_fit_lines_3d[iline]->Draw("same");
-          //b.local_fit_lines_3d[iline]->Write(b.local_fit_line_names_3d[iline].c_str());
+          if (!b.globalphi_fit_lines_3d[iline]) continue;
+          b.globalphi_fit_lines_3d[iline]->Draw("same");
+          //b.globalphi_fit_lines_3d[iline]->Write(b.globalphi_fit_line_names_3d[iline].c_str());
         }
 
-        b.c3_adc_local_hits_fits->Modified();
-        b.c3_adc_local_hits_fits->Update();
-        b.c3_adc_local_hits_fits->Write();
+        b.c3_adc_globalphi_hits_fits->Modified();
+        b.c3_adc_globalphi_hits_fits->Update();
+        b.c3_adc_globalphi_hits_fits->Write();
       }
 
     if (b.h3_adc_unassociated_hits)
@@ -594,6 +574,7 @@ InModuleTrackDisplay::HitPoint::HitPoint()
   , y(0)
   , r(0)
   , phi(0)
+  , local_phi(0)
 {}
 
 InModuleTrackDisplay::InModuleTrackDisplay(const std::string& name,
@@ -610,6 +591,7 @@ InModuleTrackDisplay::InModuleTrackDisplay(const std::string& name,
   , m_tracks(0)
   , m_hits(0)
   , m_tpcGeom(0)
+  , m_padMap(0)
 {}
 
 int InModuleTrackDisplay::Init(PHCompositeNode*)
@@ -702,7 +684,7 @@ int InModuleTrackDisplay::process_event(PHCompositeNode* topNode)
 
       if (pts.empty()) continue;
 
-      GraphBundle& b = get_bundle(bundles, key, m_evt);
+      GraphBundle& b = get_bundle(bundles, key, m_evt, m_padMap);
 
       TGraph* g_tbin_pad_hits = new TGraph();
       g_tbin_pad_hits->SetName(Form("g_s%d_sec%02d_mod%d_trk%u_tbin_pad_hits",
@@ -760,9 +742,9 @@ int InModuleTrackDisplay::process_event(PHCompositeNode* topNode)
                               static_cast<double>(p.layer),
                               static_cast<double>(p.adc));
 
-          if (b.h3_adc_local_hits)
+          if (b.h3_adc_globalphi_hits)
           {
-            b.h3_adc_local_hits->Fill(static_cast<double>(p.tbin),
+            b.h3_adc_globalphi_hits->Fill(static_cast<double>(p.tbin),
                                       p.phi,
                                       p.r,
                                       static_cast<double>(p.adc));
@@ -815,14 +797,14 @@ int InModuleTrackDisplay::process_event(PHCompositeNode* topNode)
       // notebook convention.  This avoids the unstable explicit circle
       // conversion for almost-straight tracks.  Fall back to the old circle
       // drawing only if no sagitta is stored, then fall back to straight lines.
-      const double phi_width = phi_bin_width_local[key.module];
+      const double phi_width = m_padMap ? m_padMap->get_phi_bin_width(static_cast<unsigned int>(key.module)) : 0.0;
 
       double mean_phi = 0.0;
       double mean_pad = 0.0;
       double mean_tbin = 0.0;
       for (unsigned int ip = 0; ip < pts.size(); ++ip)
       {
-        mean_phi  += pts[ip].phi;
+        mean_phi  += pts[ip].local_phi;
         mean_pad  += static_cast<double>(pts[ip].pad);
         mean_tbin += static_cast<double>(pts[ip].tbin);
       }
@@ -852,7 +834,7 @@ int InModuleTrackDisplay::process_event(PHCompositeNode* topNode)
         for (int il = static_cast<int>(min_layer); il <= static_cast<int>(max_layer); ++il)
         {
           const unsigned int layer = static_cast<unsigned int>(il);
-          const double rloc = get_local_radius_display(static_cast<unsigned int>(key.module), layer);
+          const double rloc = m_padMap->get_local_radius(static_cast<unsigned int>(key.module), layer);
           if (rloc <= 0.0) continue;
 
           double philoc = 0.0;
@@ -876,9 +858,9 @@ int InModuleTrackDisplay::process_event(PHCompositeNode* topNode)
           if (!is_good_number(tloc) || !is_good_number(padloc) || !is_good_number(philoc)) continue;
 
           v_tbin.push_back(tloc);
-          v_pad.push_back(padloc);
+          v_pad.push_back(local_phi_to_full_pad(m_padMap, key.sector, static_cast<unsigned int>(key.module), philoc));
           v_layer.push_back(static_cast<double>(layer));
-          v_phi.push_back(philoc);
+          v_phi.push_back(local_phi_to_global_phi(m_padMap, key.side, key.sector, static_cast<unsigned int>(key.module), philoc));
           v_r.push_back(rloc);
         }
 
@@ -896,17 +878,17 @@ int InModuleTrackDisplay::process_event(PHCompositeNode* topNode)
           b.fit_lines_3d.push_back(fit_line_3d);
           b.fit_line_names_3d.push_back(line_name);
 
-          TPolyLine3D* local_fit_line_3d = new TPolyLine3D(v_tbin.size());
-          const std::string local_line_name =
-            Form("line3_s%d_sec%02d_mod%d_trk%u_local_sagitta_fit",
+          TPolyLine3D* globalphi_fit_line_3d = new TPolyLine3D(v_tbin.size());
+          const std::string globalphi_line_name =
+            Form("line3_s%d_sec%02d_mod%d_trk%u_globalphi_sagitta_fit",
                  key.side, key.sector, key.module, tid);
 
           for (unsigned int ip = 0; ip < v_tbin.size(); ++ip)
-            local_fit_line_3d->SetPoint(ip, v_tbin[ip], v_phi[ip], v_r[ip]);
+            globalphi_fit_line_3d->SetPoint(ip, v_tbin[ip], v_phi[ip], v_r[ip]);
 
-          style_fit_line_3d(local_fit_line_3d, col);
-          b.local_fit_lines_3d.push_back(local_fit_line_3d);
-          b.local_fit_line_names_3d.push_back(local_line_name);
+          style_fit_line_3d(globalphi_fit_line_3d, col);
+          b.globalphi_fit_lines_3d.push_back(globalphi_fit_line_3d);
+          b.globalphi_fit_line_names_3d.push_back(globalphi_line_name);
 
           drew_curved_fit = true;
         }
@@ -949,7 +931,7 @@ int InModuleTrackDisplay::process_event(PHCompositeNode* topNode)
         for (int il = static_cast<int>(min_layer); il <= static_cast<int>(max_layer); ++il)
         {
           const unsigned int layer = static_cast<unsigned int>(il);
-          const double rloc = get_local_radius_display(static_cast<unsigned int>(key.module), layer);
+          const double rloc = m_padMap->get_local_radius(static_cast<unsigned int>(key.module), layer);
           if (rloc <= 0.0) continue;
           if (d <= 1.0e-12) continue;
           if (d > rloc + rc) continue;
@@ -995,9 +977,9 @@ int InModuleTrackDisplay::process_event(PHCompositeNode* topNode)
           if (!is_good_number(tloc) || !is_good_number(padloc) || !is_good_number(philoc)) continue;
 
           v_tbin.push_back(tloc);
-          v_pad.push_back(padloc);
+          v_pad.push_back(local_phi_to_full_pad(m_padMap, key.sector, static_cast<unsigned int>(key.module), philoc));
           v_layer.push_back(static_cast<double>(layer));
-          v_phi.push_back(philoc);
+          v_phi.push_back(local_phi_to_global_phi(m_padMap, key.side, key.sector, static_cast<unsigned int>(key.module), philoc));
           v_r.push_back(rloc);
         }
 
@@ -1015,17 +997,17 @@ int InModuleTrackDisplay::process_event(PHCompositeNode* topNode)
           b.fit_lines_3d.push_back(fit_line_3d);
           b.fit_line_names_3d.push_back(line_name);
 
-          TPolyLine3D* local_fit_line_3d = new TPolyLine3D(v_tbin.size());
-          const std::string local_line_name =
-            Form("line3_s%d_sec%02d_mod%d_trk%u_local_circle_fit",
+          TPolyLine3D* globalphi_fit_line_3d = new TPolyLine3D(v_tbin.size());
+          const std::string globalphi_line_name =
+            Form("line3_s%d_sec%02d_mod%d_trk%u_globalphi_circle_fit",
                  key.side, key.sector, key.module, tid);
 
           for (unsigned int ip = 0; ip < v_tbin.size(); ++ip)
-            local_fit_line_3d->SetPoint(ip, v_tbin[ip], v_phi[ip], v_r[ip]);
+            globalphi_fit_line_3d->SetPoint(ip, v_tbin[ip], v_phi[ip], v_r[ip]);
 
-          style_fit_line_3d(local_fit_line_3d, col);
-          b.local_fit_lines_3d.push_back(local_fit_line_3d);
-          b.local_fit_line_names_3d.push_back(local_line_name);
+          style_fit_line_3d(globalphi_fit_line_3d, col);
+          b.globalphi_fit_lines_3d.push_back(globalphi_fit_line_3d);
+          b.globalphi_fit_line_names_3d.push_back(globalphi_line_name);
 
           drew_curved_fit = true;
         }
@@ -1056,9 +1038,9 @@ int InModuleTrackDisplay::process_event(PHCompositeNode* topNode)
         b.fit_lines_3d.push_back(fit_line_3d);
         b.fit_line_names_3d.push_back(line_name);
 
-        TPolyLine3D* local_fit_line_3d = new TPolyLine3D(51);
-        const std::string local_line_name =
-          Form("line3_s%d_sec%02d_mod%d_trk%u_local_line_fit",
+        TPolyLine3D* globalphi_fit_line_3d = new TPolyLine3D(51);
+        const std::string globalphi_line_name =
+          Form("line3_s%d_sec%02d_mod%d_trk%u_globalphi_line_fit",
                key.side, key.sector, key.module, tid);
 
         for (int iplocal = 0; iplocal <= 50; ++iplocal)
@@ -1072,12 +1054,15 @@ int InModuleTrackDisplay::process_event(PHCompositeNode* topNode)
             trk->get_radius_phi_slope() * rloc +
             trk->get_radius_phi_intercept();
 
-          local_fit_line_3d->SetPoint(iplocal, tloc, philoc, rloc);
+          globalphi_fit_line_3d->SetPoint(iplocal,
+                                      tloc,
+                                      local_phi_to_global_phi(m_padMap, key.side, key.sector, static_cast<unsigned int>(key.module), philoc),
+                                      rloc);
         }
 
-        style_fit_line_3d(local_fit_line_3d, col);
-        b.local_fit_lines_3d.push_back(local_fit_line_3d);
-        b.local_fit_line_names_3d.push_back(local_line_name);
+        style_fit_line_3d(globalphi_fit_line_3d, col);
+        b.globalphi_fit_lines_3d.push_back(globalphi_fit_line_3d);
+        b.globalphi_fit_line_names_3d.push_back(globalphi_line_name);
       }
 
       b.mg_tbin_pad_fits->Add(g_tbin_pad_fit, "L");
@@ -1106,7 +1091,7 @@ int InModuleTrackDisplay::process_event(PHCompositeNode* topNode)
       const int sector = static_cast<int>(TpcDefs::getSectorId(hsk));
 
       const GroupKey key(side, sector, module);
-      GraphBundle& b = get_bundle(bundles, key, m_evt);
+      GraphBundle& b = get_bundle(bundles, key, m_evt, m_padMap);
 
       TrkrHitSet::ConstRange hit_range = hitset->getHits();
 
@@ -1180,6 +1165,7 @@ bool InModuleTrackDisplay::get_nodes(PHCompositeNode* topNode)
 {
   m_hits = findNode::getClass<TrkrHitSetContainer>(topNode, "TRKR_HITSET");
   m_tpcGeom = findNode::getClass<PHG4TpcGeomContainer>(topNode, "TPCGEOMCONTAINER");
+  m_padMap = findNode::getClass<TpcPadMap>(topNode, "TPC_PADMAP");
 
   m_tracks = findNode::getClass<InModuleTrackContainer>(topNode,
                                                         m_trackNodeName.c_str());
@@ -1222,9 +1208,16 @@ bool InModuleTrackDisplay::get_nodes(PHCompositeNode* topNode)
     return false;
   }
 
-  if (!m_tpcGeom)
+  if (!m_padMap)
   {
-    std::cerr << "InModuleTrackDisplay - missing TPCGEOMCONTAINER"
+    std::cerr << "InModuleTrackDisplay - missing TPC_PADMAP"
+              << std::endl;
+    return false;
+  }
+
+  if (!m_padMap->isValid())
+  {
+    std::cerr << "InModuleTrackDisplay - TPC_PADMAP is invalid"
               << std::endl;
     return false;
   }
@@ -1255,8 +1248,14 @@ InModuleTrackDisplay::make_hit_point(const TrkrDefs::hitsetkey hsk,
   const int module = layer_to_module(p.layer);
   if (module < 0) return p;
 
-  p.r = get_local_radius_display(static_cast<unsigned int>(module), p.layer);
-  p.phi = get_local_phi_display(static_cast<unsigned int>(module), p.pad);
+  if (!m_padMap) return p;
+
+  const unsigned int region = static_cast<unsigned int>(module);
+  const unsigned int side = static_cast<unsigned int>(TpcDefs::getSide(hsk));
+
+  p.r = m_padMap->get_local_radius(region, p.layer);
+  p.local_phi = m_padMap->get_local_phi(region, static_cast<double>(p.pad));
+  p.phi = m_padMap->get_global_phi(side, region, static_cast<double>(p.pad));
 
   p.x = p.r * std::cos(p.phi);
   p.y = p.r * std::sin(p.phi);

@@ -11,6 +11,7 @@ class TFile;
 class InModuleTrackContainer;
 class TrkrHitSetContainer;
 class PHG4TpcGeomContainer;
+class TpcPadMap;
 
 class InModuleTrackDisplay : public SubsysReco
 {
@@ -41,7 +42,8 @@ class InModuleTrackDisplay : public SubsysReco
     double x;
     double y;
     double r;
-    double phi;
+    double phi;       // global phi
+    double local_phi; // sector-local phi used by in-module fit formulas
   };
 
   bool get_nodes(PHCompositeNode* topNode);
@@ -58,6 +60,7 @@ class InModuleTrackDisplay : public SubsysReco
   InModuleTrackContainer* m_tracks;
   TrkrHitSetContainer* m_hits;
   PHG4TpcGeomContainer* m_tpcGeom;
+  TpcPadMap* m_padMap;
 };
 
 #endif
