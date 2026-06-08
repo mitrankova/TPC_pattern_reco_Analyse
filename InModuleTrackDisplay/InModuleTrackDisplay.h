@@ -10,8 +10,7 @@ class PHCompositeNode;
 class TFile;
 class InModuleTrackContainer;
 class TrkrHitSetContainer;
-class PHG4TpcGeomContainer;
-class TpcPadMap;
+class IdealPadMap;
 
 class InModuleTrackDisplay : public SubsysReco
 {
@@ -20,35 +19,50 @@ class InModuleTrackDisplay : public SubsysReco
                        const std::string& outfilename = "inmodule_display.root",
                        const std::string& trackNodeName = "INMODULETRACKS",
                        unsigned int maxEventDisplays = 5);
-  ~InModuleTrackDisplay() override {}
+  ~InModuleTrackDisplay() override;
 
   int Init(PHCompositeNode* topNode) override;
   int process_event(PHCompositeNode* topNode) override;
   int End(PHCompositeNode* topNode) override;
 
- private:
-
-  
   struct HitPoint
   {
     HitPoint();
+
     bool ok;
     TrkrDefs::hitsetkey hitsetkey;
     TrkrDefs::hitkey hitkey;
+
+    int side;
+    unsigned int sector;
     unsigned int layer;
     unsigned int pad;
     unsigned int tbin;
     unsigned short adc;
-    double x;
-    double y;
-    double r;
-    double phi;       // global phi
-    double local_phi; // sector-local phi used by in-module fit formulas
+
+    // Only display/fitter coordinates.  No global/local x/y are used.
+    double radius;
+    double phi;
   };
 
+  // Display-only fit mode. Use Fitter::FIT_SAGITTA for field-on curvature
+  // or Fitter::FIT_LINEAR for straight-line fits. Default is sagitta.
+  void setFitMode(int mode) { m_fitMode = mode; }
+  void setFitWithSagitta(bool v) { m_fitMode = v ? 1 : 0; }
+
+  void setFitWeightPower(double v) { m_fitWeightPower = v; }
+  void setFitWeightFloorFrac(double v) { m_fitWeightFloorFrac = v; }
+
+ private:
   bool get_nodes(PHCompositeNode* topNode);
-  HitPoint make_hit_point(const TrkrDefs::hitsetkey hsk,
-                          const TrkrDefs::hitkey hk) const;
+  HitPoint make_hit_point(TrkrDefs::hitsetkey hsk,
+                          TrkrDefs::hitkey hk) const;
+
+  double ideal_radius(unsigned int layer) const;
+  double ideal_phi(int side,
+                   unsigned int sector,
+                   unsigned int layer,
+                   unsigned int pad) const;
 
   std::string m_outfilename;
   std::string m_trackNodeName;
@@ -59,8 +73,11 @@ class InModuleTrackDisplay : public SubsysReco
   TFile* m_outfile;
   InModuleTrackContainer* m_tracks;
   TrkrHitSetContainer* m_hits;
-  PHG4TpcGeomContainer* m_tpcGeom;
-  TpcPadMap* m_padMap;
+  IdealPadMap* m_idealPadMap;
+
+  int m_fitMode;
+  double m_fitWeightPower;
+  double m_fitWeightFloorFrac;
 };
 
 #endif
