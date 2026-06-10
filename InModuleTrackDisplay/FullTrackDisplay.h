@@ -59,6 +59,45 @@ class FullTrackDisplay : public SubsysReco
     m_fitWeightFloorFrac = floor_frac;
   }
 
+  // Plot filters. Defaults accept all tracks.
+  // nmodules is FullTrack::get_nsegments(), i.e. the number of connected
+  // InModuleTrack pieces/modules in the full-track candidate.
+  void setPlotNModulesRange(unsigned int min_modules, unsigned int max_modules)
+  {
+    m_plotMinModules = min_modules;
+    m_plotMaxModules = max_modules;
+  }
+  void setPlotModuleRange(unsigned int min_modules, unsigned int max_modules)
+  {
+    setPlotNModulesRange(min_modules, max_modules);
+  }
+  void setPlotDirectionRange(double min_direction, double max_direction)
+  {
+    m_plotMinDirection = min_direction;
+    m_plotMaxDirection = max_direction;
+  }
+  void setPlotThetaRange(double min_theta, double max_theta)
+  {
+    m_plotMinTheta = min_theta;
+    m_plotMaxTheta = max_theta;
+  }
+  void setPlotCurvatureRange(double min_curvature, double max_curvature)
+  {
+    m_plotMinCurvature = min_curvature;
+    m_plotMaxCurvature = max_curvature;
+  }
+  void setPlotAllTracks()
+  {
+    m_plotMinModules = 0;
+    m_plotMaxModules = 999999;
+    m_plotMinDirection = -1.0e30;
+    m_plotMaxDirection = 1.0e30;
+    m_plotMinTheta = -1.0e30;
+    m_plotMaxTheta = 1.0e30;
+    m_plotMinCurvature = -1.0e30;
+    m_plotMaxCurvature = 1.0e30;
+  }
+
  private:
   bool get_nodes(PHCompositeNode* topNode);
   HitPoint make_hit_point(TrkrDefs::hitsetkey hsk,
@@ -77,6 +116,14 @@ class FullTrackDisplay : public SubsysReco
   int m_fitMode;
   double m_fitWeightPower;
   double m_fitWeightFloorFrac;
+  unsigned int m_plotMinModules;
+  unsigned int m_plotMaxModules;
+  double m_plotMinDirection;
+  double m_plotMaxDirection;
+  double m_plotMinTheta;
+  double m_plotMaxTheta;
+  double m_plotMinCurvature;
+  double m_plotMaxCurvature;
 };
 
 #endif

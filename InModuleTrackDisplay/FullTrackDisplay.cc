@@ -224,6 +224,24 @@ namespace
     return result;
   }
 
+  double fit_direction(const FitResult& fit)
+  {
+    if (!fit.ok) return 0.0;
+    return fit.use_sagitta ? fit.phi_sagitta.theta : std::atan(fit.phi_slope);
+  }
+
+  double fit_theta(const FitResult& fit)
+  {
+    if (!fit.ok) return 0.0;
+    return std::atan(fit.tbin_slope);
+  }
+
+  double fit_curvature(const FitResult& fit)
+  {
+    if (!fit.ok) return 0.0;
+    return fit.use_sagitta ? fit.phi_sagitta.invR : 0.0;
+  }
+
   void flush_fit_segment(std::vector<TPolyLine3D*>& lines,
                          std::vector<double>& tbin_values,
                          std::vector<double>& phi_values,
@@ -336,6 +354,14 @@ FullTrackDisplay::FullTrackDisplay(const std::string& name,
   , m_fitMode(Fitter::FIT_SAGITTA)
   , m_fitWeightPower(1.0)
   , m_fitWeightFloorFrac(0.05)
+  , m_plotMinModules(0)
+  , m_plotMaxModules(999999)
+  , m_plotMinDirection(-1.0e30)
+  , m_plotMaxDirection(1.0e30)
+  , m_plotMinTheta(-1.0e30)
+  , m_plotMaxTheta(1.0e30)
+  , m_plotMinCurvature(-1.0e30)
+  , m_plotMaxCurvature(1.0e30)
 {
 }
 
@@ -449,6 +475,9 @@ int FullTrackDisplay::process_event(PHCompositeNode* topNode)
     const unsigned int side = static_cast<unsigned int>(trk_side);
     const bool single_module_track = (trk->get_nsegments() == 1U);
 
+    const unsigned int nmodules = trk->get_nsegments();
+    if (nmodules < m_plotMinModules || nmodules > m_plotMaxModules) continue;
+
     std::vector<HitPoint> pts;
     pts.reserve(trk->size_hit_indices());
 
@@ -457,8 +486,22 @@ int FullTrackDisplay::process_event(PHCompositeNode* topNode)
       const FullTrack::HitIndex idx = trk->get_hit_index(ih);
       const HitPoint p = make_hit_point(idx.first, idx.second);
       if (!p.ok) continue;
-
       pts.push_back(p);
+    }
+
+    const FitResult fit = fit_full_track_points(pts, m_fitMode, m_fitWeightPower, m_fitWeightFloorFrac);
+    if (!fit.ok) continue;
+
+    const double direction = fit_direction(fit);
+    const double theta = fit_theta(fit);
+    const double curvature = fit_curvature(fit);
+    if (direction < m_plotMinDirection || direction > m_plotMaxDirection) continue;
+    if (theta < m_plotMinTheta || theta > m_plotMaxTheta) continue;
+    if (curvature < m_plotMinCurvature || curvature > m_plotMaxCurvature) continue;
+
+    for (unsigned int ip = 0; ip < pts.size(); ++ip)
+    {
+      const HitPoint& p = pts[ip];
       const unsigned long long uid = make_unique_hit_id(p.hitsetkey, p.hitkey);
       const double phi = wrap_phi(p.global_phi);
       const double x = p.radius * std::cos(p.global_phi);
@@ -477,7 +520,6 @@ int FullTrackDisplay::process_event(PHCompositeNode* topNode)
       }
     }
 
-    const FitResult fit = fit_full_track_points(pts, m_fitMode, m_fitWeightPower, m_fitWeightFloorFrac);
     add_fit_lines(fit_lines_tpr[side], fit, track_color(itrk), false);
     add_fit_lines(fit_lines_txy[side], fit, track_color(itrk), true);
 
@@ -502,7 +544,7 @@ int FullTrackDisplay::process_event(PHCompositeNode* topNode)
     c3->Update();
     c3->Write();
 
-    /*TCanvas* c3xy = new TCanvas(Form("c3_evt%06u_timebin_x_y_fits_side%u", m_evt, side),
+    TCanvas* c3xy = new TCanvas(Form("c3_evt%06u_timebin_x_y_fits_side%u", m_evt, side),
                                 Form("event %u side %u full-track hits and display fits", m_evt, side),
                                 1200, 900);
     h3xy[side]->Draw("BOX2Z");
@@ -513,7 +555,6 @@ int FullTrackDisplay::process_event(PHCompositeNode* topNode)
     c3xy->Modified();
     c3xy->Update();
     c3xy->Write();
-    */
 
     TCanvas* c3_single = new TCanvas(Form("c3_evt%06u_timebin_phi_radius_fits_single_module_side%u", m_evt, side),
                                      Form("event %u side %u single-module full-track hits and display fits", m_evt, side),
