@@ -1,12 +1,13 @@
 #include "FullTrackDisplay.h"
 
+#include "Fitter.h"
 #include "FullTrack.h"
 #include "FullTrackContainer.h"
-#include "TpcPadMap.h"
+#include "IdealPadMap.h"
 
 #include <fun4all/Fun4AllReturnCodes.h>
-#include <phool/getClass.h>
 #include <phool/PHCompositeNode.h>
+#include <phool/getClass.h>
 
 #include <trackbase/TpcDefs.h>
 #include <trackbase/TrkrHit.h>
@@ -17,222 +18,48 @@
 #include <TColor.h>
 #include <TDirectory.h>
 #include <TFile.h>
-#include <TGraph.h>
-#include <TMultiGraph.h>
 #include <TH3D.h>
 #include <TMath.h>
 #include <TPolyLine3D.h>
-#include <TPolyMarker3D.h>
 #include <TString.h>
 
 #include <algorithm>
 #include <cmath>
 #include <iostream>
-#include <map>
+#include <limits>
 #include <set>
 #include <string>
 #include <vector>
 
 namespace
 {
-  const double TWO_PI = 2.0 * TMath::Pi();
-
-  double wrap_to_pi(double phi)
+  double wrap_phi(double phi)
   {
-    while (phi > TMath::Pi())  phi -= TWO_PI;
-    while (phi <= -TMath::Pi()) phi += TWO_PI;
+    while (phi > TMath::Pi()) phi -= 2.0 * TMath::Pi();
+    while (phi <= -TMath::Pi()) phi += 2.0 * TMath::Pi();
     return phi;
   }
 
+  double unwrap_phi_near(const double phi, const double reference)
+  {
+    double out = phi;
+    while (out - reference > TMath::Pi()) out -= 2.0 * TMath::Pi();
+    while (out - reference < -TMath::Pi()) out += 2.0 * TMath::Pi();
+    return out;
+  }
 
   bool is_good_number(const double x)
   {
-    return (x == x && std::fabs(x) < 1.0e30);
-  }
-
-  struct ClippedFitSegment
-  {
-    double tbin0;
-    double phi0;
-    double radius0;
-    double tbin1;
-    double phi1;
-    double radius1;
-  };
-
-  bool clip_phi_line_to_window(double& t0, double& p0, double& r0,
-                               double& t1, double& p1, double& r1)
-  {
-    const double pmin = -TMath::Pi();
-    const double pmax =  TMath::Pi();
-
-    if ((p0 < pmin && p1 < pmin) || (p0 > pmax && p1 > pmax)) return false;
-
-    if (std::fabs(p1 - p0) < 1.0e-12)
-    {
-      return (p0 >= pmin && p0 <= pmax);
-    }
-
-    if (p0 < pmin)
-    {
-      const double f = (pmin - p0) / (p1 - p0);
-      t0 += f * (t1 - t0);
-      r0 += f * (r1 - r0);
-      p0 = pmin;
-    }
-    else if (p0 > pmax)
-    {
-      const double f = (pmax - p0) / (p1 - p0);
-      t0 += f * (t1 - t0);
-      r0 += f * (r1 - r0);
-      p0 = pmax;
-    }
-
-    if (p1 < pmin)
-    {
-      const double f = (pmin - p0) / (p1 - p0);
-      t1 = t0 + f * (t1 - t0);
-      r1 = r0 + f * (r1 - r0);
-      p1 = pmin;
-    }
-    else if (p1 > pmax)
-    {
-      const double f = (pmax - p0) / (p1 - p0);
-      t1 = t0 + f * (t1 - t0);
-      r1 = r0 + f * (r1 - r0);
-      p1 = pmax;
-    }
-
-    return (p0 >= pmin && p0 <= pmax && p1 >= pmin && p1 <= pmax);
-  }
-
-  void make_clipped_fit_segments(const std::vector<double>& tbin,
-                                 const std::vector<double>& phi_unwrapped,
-                                 const std::vector<double>& radius,
-                                 std::vector<ClippedFitSegment>& segments)
-  {
-    segments.clear();
-    if (tbin.size() < 2) return;
-
-    for (unsigned int i = 1; i < tbin.size(); ++i)
-    {
-      const double p0raw = phi_unwrapped[i - 1];
-      const double p1raw = phi_unwrapped[i];
-
-      const int kmin = static_cast<int>(std::floor((-TMath::Pi() - std::max(p0raw, p1raw)) / TWO_PI)) - 1;
-      const int kmax = static_cast<int>(std::ceil( ( TMath::Pi() - std::min(p0raw, p1raw)) / TWO_PI)) + 1;
-
-      for (int k = kmin; k <= kmax; ++k)
-      {
-        double t0 = tbin[i - 1];
-        double t1 = tbin[i];
-        double r0 = radius[i - 1];
-        double r1 = radius[i];
-        double p0 = p0raw + static_cast<double>(k) * TWO_PI;
-        double p1 = p1raw + static_cast<double>(k) * TWO_PI;
-
-        if (!clip_phi_line_to_window(t0, p0, r0, t1, p1, r1)) continue;
-        if (!is_good_number(t0) || !is_good_number(t1) ||
-            !is_good_number(p0) || !is_good_number(p1) ||
-            !is_good_number(r0) || !is_good_number(r1)) continue;
-
-        ClippedFitSegment s;
-        s.tbin0 = t0;
-        s.phi0 = p0;
-        s.radius0 = r0;
-        s.tbin1 = t1;
-        s.phi1 = p1;
-        s.radius1 = r1;
-        segments.push_back(s);
-      }
-    }
+    return std::isfinite(x) && std::fabs(x) < 1.0e30;
   }
 
   int track_color(const unsigned int itrk)
   {
     static const int colors[] = {
-      kRed + 1,
-      kBlue + 1,
-      kGreen + 2,
-      kMagenta + 1,
-      kCyan + 2,
-      kOrange + 7,
-      kViolet + 1,
-      kAzure + 1,
-      kPink + 7,
-      kTeal + 3
+      kRed + 1, kBlue + 1, kGreen + 2, kMagenta + 1, kCyan + 2,
+      kOrange + 7, kViolet + 1, kAzure + 1, kPink + 7, kTeal + 3
     };
-
-    const unsigned int ncolors = sizeof(colors) / sizeof(colors[0]);
-    return colors[itrk % ncolors];
-  }
-
-  int layer_to_region(const unsigned int layer)
-  {
-    if (layer < 7 || layer > 54) return -1;
-    const int region = static_cast<int>((layer - 7) / 16);
-    if (region < 0 || region >= 3) return -1;
-    return region;
-  }
-
-  bool fulltrack_fit_point_to_global_phi_radius(const FullTrack* trk,
-                                               const TpcPadMap* padmap,
-                                               const unsigned int layer,
-                                               double& tbin,
-                                               double& phi,
-                                               double& radius)
-  {
-    if (!trk || !padmap) return false;
-
-    const int reg = layer_to_region(layer);
-    if (reg < 0) return false;
-
-    radius = padmap->get_local_radius(static_cast<unsigned int>(reg), layer);
-    if (!is_good_number(radius) || radius <= 0.0) return false;
-
-    /*
-     * IMPORTANT:
-     * FullTrack::get_phi_slope()/get_phi_intercept() are named "phi",
-     * but in FullTrackConnector they are filled with the fitted pad_eff:
-     *
-     *   full->set_phi_slope(c.pad_slope_r);
-     *   full->set_phi_intercept(c.pad_intercept_r);
-     *
-     * where pad_eff is the region-0-equivalent pad coordinate:
-     *
-     *   pad_eff = pad_raw * Npads(region0) / Npads(region)
-     *
-     * Therefore the display must first convert pad_eff back to the
-     * pad coordinate for this layer's region, and only then ask TpcPadMap
-     * for the corresponding global phi.
-     */
-    const double npads_ref =
-      static_cast<double>(padmap->get_pads_per_sector(0));
-    const double npads_reg =
-      static_cast<double>(padmap->get_pads_per_sector(static_cast<unsigned int>(reg)));
-    if (npads_ref <= 0.0 || npads_reg <= 0.0) return false;
-
-    const double pad_eff = trk->get_phi_slope() * radius +
-                           trk->get_phi_intercept();
-    const double pad_raw = pad_eff * npads_reg / npads_ref;
-
-    tbin = trk->get_tbin_slope() * radius +
-           trk->get_tbin_intercept();
-    phi = wrap_to_pi(padmap->get_global_phi(static_cast<unsigned int>(trk->get_side()),
-                                            static_cast<unsigned int>(reg),
-                                            pad_raw));
-
-    return (is_good_number(tbin) &&
-            is_good_number(phi) &&
-            is_good_number(radius));
-  }
-
-  double unwrap_near_reference(const double phi, const double ref)
-  {
-    double out = phi;
-    while (out - ref >  TMath::Pi()) out -= TWO_PI;
-    while (out - ref < -TMath::Pi()) out += TWO_PI;
-    return out;
+    return colors[itrk % (sizeof(colors) / sizeof(colors[0]))];
   }
 
   unsigned long long make_unique_hit_id(const TrkrDefs::hitsetkey hsk,
@@ -240,27 +67,6 @@ namespace
   {
     return (static_cast<unsigned long long>(hsk) << 32) |
            static_cast<unsigned long long>(hk);
-  }
-
-  void style_hit_graph(TGraph* g, const int color)
-  {
-    if (!g) return;
-    g->SetMarkerStyle(20);
-    g->SetMarkerSize(0.65);
-    g->SetMarkerColor(color);
-    g->SetLineColor(color);
-    g->SetLineWidth(1);
-  }
-
-  void style_fit_graph(TGraph* g, const int color)
-  {
-    if (!g) return;
-    g->SetMarkerStyle(1);
-    g->SetMarkerSize(0.0);
-    g->SetMarkerColor(color);
-    g->SetLineColor(color);
-    g->SetLineWidth(3);
-    g->SetLineStyle(2);
   }
 
   void style_fit_line_3d(TPolyLine3D* line, const int color)
@@ -271,228 +77,229 @@ namespace
     line->SetLineStyle(1);
   }
 
-  void style_vertex_marker_3d(TPolyMarker3D* marker)
+  double sagitta_model_derivative(const double xrot,
+                                  const double x0,
+                                  const double invR)
   {
-    if (!marker) return;
-    marker->SetMarkerStyle(29);
-    marker->SetMarkerSize(3.0);
-    marker->SetMarkerColor(kBlack);
+    const double dx = xrot - x0;
+    const double dx2 = dx * dx;
+    const double invR2 = invR * invR;
+    const double invR3 = invR2 * invR;
+    const double invR5 = invR3 * invR2;
+    return -invR * dx - 0.5 * invR3 * dx2 * dx - 0.375 * invR5 * dx2 * dx2 * dx;
   }
 
-  TGraph* make_graph(const std::vector<double>& x,
-                     const std::vector<double>& y,
-                     const std::string& name,
-                     const int color,
-                     const bool fit_style)
+  double sagitta_phi_at_radius(const double radius,
+                               const Fitter::SagittaFit& fit)
   {
-    TGraph* g = new TGraph(static_cast<int>(x.size()));
-    g->SetName(name.c_str());
+    const double c = std::cos(fit.theta);
+    const double s = std::sin(fit.theta);
+    double yy = std::tan(fit.theta) * radius;
 
-    for (unsigned int i = 0; i < x.size(); ++i)
+    for (unsigned int iter = 0; iter < 25; ++iter)
     {
-      g->SetPoint(static_cast<int>(i), x[i], y[i]);
+      const double xrot = c * radius + s * yy;
+      const double yrot = -s * radius + c * yy;
+      const double f = Fitter::sagittaModel(xrot, fit.S, fit.x0, fit.invR);
+      const double g = yrot - f;
+      const double df = sagitta_model_derivative(xrot, fit.x0, fit.invR);
+      const double dg = c - df * s;
+      if (std::fabs(dg) < 1.0e-12) break;
+      const double step = g / dg;
+      yy -= step;
+      if (std::fabs(step) < 1.0e-10) break;
     }
 
-    if (fit_style) style_fit_graph(g, color);
-    else style_hit_graph(g, color);
-
-    return g;
+    return fit.b + yy;
   }
 
-  struct SideBundle
+  struct RadiusSort
   {
-    SideBundle()
-      : h3_adc_hits(0)
-      , h3_xyz_hits(0)
-      , c3_adc_hits_fits(0)
-      , c3_xyz_hits_fits(0)
-      , c_tbin_phi(0)
-      , c_tbin_layer(0)
-      , mg_tbin_phi_hits(0)
-      , mg_tbin_phi_fits(0)
-      , mg_tbin_layer_hits(0)
-      , mg_tbin_layer_fits(0)
-    {}
-
-    TH3D* h3_adc_hits;
-    TH3D* h3_xyz_hits;
-    TCanvas* c3_adc_hits_fits;
-    TCanvas* c3_xyz_hits_fits;
-    TCanvas* c_tbin_phi;
-    TCanvas* c_tbin_layer;
-
-    TMultiGraph* mg_tbin_phi_hits;
-    TMultiGraph* mg_tbin_phi_fits;
-    TMultiGraph* mg_tbin_layer_hits;
-    TMultiGraph* mg_tbin_layer_fits;
-
-    std::vector<TPolyLine3D*> fit_lines_3d;
-    std::vector<std::string> fit_line_names_3d;
-
-    // Same fitted tracks in detector-like XYZ display:
-    // x = r cos(phi), y = r sin(phi), z = timebin.
-    std::vector<TPolyLine3D*> fit_lines_xyz;
-
-    // One XYZ display marker per reconstructed vertex on this side.
-    // Many tracks share the same vertex, so use tbin separation to avoid
-    // drawing the same vertex hundreds of times.
-    std::vector<TPolyMarker3D*> vertex_markers_xyz;
-    std::vector<double> vertex_marker_tbins;
-
-    std::set<unsigned long long> filled_hit_ids;
+    const std::vector<FullTrackDisplay::HitPoint>* pts;
+    explicit RadiusSort(const std::vector<FullTrackDisplay::HitPoint>* p) : pts(p) {}
+    bool operator()(unsigned int a, unsigned int b) const
+    {
+      const FullTrackDisplay::HitPoint& pa = (*pts)[a];
+      const FullTrackDisplay::HitPoint& pb = (*pts)[b];
+      if (pa.radius != pb.radius) return pa.radius < pb.radius;
+      return pa.tbin < pb.tbin;
+    }
   };
 
-  bool has_nearby_vertex_marker(const SideBundle& b,
-                                const double vertex_tbin,
-                                const double min_dtbin)
+  struct FitResult
   {
-    for (unsigned int i = 0; i < b.vertex_marker_tbins.size(); ++i)
+    FitResult()
+      : ok(false)
+      , use_sagitta(false)
+      , phi_slope(0.0)
+      , phi_intercept(0.0)
+      , tbin_slope(0.0)
+      , tbin_intercept(0.0)
+      , phi_sagitta()
+      , rmin(0.0)
+      , rmax(0.0)
+    {}
+
+    bool ok;
+    bool use_sagitta;
+    double phi_slope;
+    double phi_intercept;
+    double tbin_slope;
+    double tbin_intercept;
+    Fitter::SagittaFit phi_sagitta;
+    double rmin;
+    double rmax;
+  };
+
+  FitResult fit_full_track_points(const std::vector<FullTrackDisplay::HitPoint>& pts,
+                                  const int fit_mode,
+                                  const double weight_power,
+                                  const double weight_floor_frac)
+  {
+    FitResult result;
+    if (pts.size() < 2) return result;
+
+    std::vector<unsigned int> order;
+    order.reserve(pts.size());
+    for (unsigned int i = 0; i < pts.size(); ++i) order.push_back(i);
+    std::sort(order.begin(), order.end(), RadiusSort(&pts));
+
+    double max_adc = 0.0;
+    for (const auto& p : pts) max_adc = std::max(max_adc, static_cast<double>(p.adc));
+    if (max_adc <= 0.0) max_adc = 1.0;
+
+    std::vector<Fitter::FitPoint> radius_phi_points;
+    std::vector<Fitter::FitPoint> radius_tbin_points;
+    radius_phi_points.reserve(pts.size());
+    radius_tbin_points.reserve(pts.size());
+
+    bool first = true;
+    double phi_reference = 0.0;
+    result.rmin = std::numeric_limits<double>::max();
+    result.rmax = -std::numeric_limits<double>::max();
+
+    for (unsigned int io = 0; io < order.size(); ++io)
     {
-      if (std::fabs(b.vertex_marker_tbins[i] - vertex_tbin) < min_dtbin)
+      const FullTrackDisplay::HitPoint& p = pts[order[io]];
+      if (!is_good_number(p.radius) || !is_good_number(p.global_phi)) continue;
+
+      double phi = p.global_phi;
+      if (first)
       {
-        return true;
+        phi_reference = phi;
+        first = false;
       }
+      else
+      {
+        phi = unwrap_phi_near(phi, phi_reference);
+        phi_reference = phi;
+      }
+
+      const double w = Fitter::adcWeight(static_cast<double>(p.adc), max_adc,
+                                         weight_power, weight_floor_frac);
+      radius_phi_points.emplace_back(p.radius, phi, w);
+      radius_tbin_points.emplace_back(p.radius, static_cast<double>(p.tbin), w);
+      result.rmin = std::min(result.rmin, p.radius);
+      result.rmax = std::max(result.rmax, p.radius);
     }
-    return false;
+
+    if (radius_phi_points.size() < 2 || radius_tbin_points.size() < 2) return result;
+
+    const Fitter::LineFit phi_fit = Fitter::fitLine(radius_phi_points);
+    const Fitter::LineFit tbin_fit = Fitter::fitLine(radius_tbin_points);
+    if (!phi_fit.ok || !tbin_fit.ok) return result;
+
+    result.ok = true;
+    result.phi_slope = phi_fit.slope;
+    result.phi_intercept = phi_fit.intercept;
+    result.tbin_slope = tbin_fit.slope;
+    result.tbin_intercept = tbin_fit.intercept;
+
+    if (fit_mode == Fitter::FIT_SAGITTA && radius_phi_points.size() >= 3)
+    {
+      result.phi_sagitta = Fitter::fitSagitta(radius_phi_points);
+      result.use_sagitta = result.phi_sagitta.ok;
+    }
+
+    return result;
   }
 
-  void make_side_bundle(SideBundle& b,
-                        const int side,
-                        const unsigned int evt)
+  void flush_fit_segment(std::vector<TPolyLine3D*>& lines,
+                         std::vector<double>& tbin_values,
+                         std::vector<double>& phi_values,
+                         std::vector<double>& radius_values,
+                         const int color,
+                         const bool draw_xy)
   {
-    const TString tag = Form("side%d", side);
+    if (tbin_values.size() < 2)
+    {
+      tbin_values.clear();
+      phi_values.clear();
+      radius_values.clear();
+      return;
+    }
 
-    b.h3_adc_hits =
-      new TH3D(Form("h3_%s_fulltrack_adc_hits", tag.Data()),
-               Form("event %u side %d: FULLTRACK ADC-weighted hits;timebin;global #phi;radius",
-                    evt, side),
-               512, -0.5, 511.5,
-               720, -M_PI, M_PI,
-               164, -2.0, 80.0);
-    b.h3_adc_hits->SetStats(0);
+    TPolyLine3D* line = new TPolyLine3D(static_cast<int>(tbin_values.size()));
+    for (unsigned int i = 0; i < tbin_values.size(); ++i)
+    {
+      if (draw_xy)
+      {
+        const double x = radius_values[i] * std::cos(phi_values[i]);
+        const double y = radius_values[i] * std::sin(phi_values[i]);
+        line->SetPoint(static_cast<int>(i), tbin_values[i], x, y);
+      }
+      else
+      {
+        line->SetPoint(static_cast<int>(i), tbin_values[i], phi_values[i], radius_values[i]);
+      }
+    }
+    style_fit_line_3d(line, color);
+    lines.push_back(line);
 
-    b.h3_xyz_hits =
-      new TH3D(Form("h3_%s_fulltrack_xyz_hits", tag.Data()),
-               Form("event %u side %d: FULLTRACK ADC-weighted hits;global x [cm];global y [cm];timebin",
-                    evt, side),
-               160, -80.0, 80.0,
-               160, -80.0, 80.0,
-               512, -0.5, 511.5);
-    b.h3_xyz_hits->SetStats(0);
-
-    b.mg_tbin_phi_hits = new TMultiGraph();
-    b.mg_tbin_phi_hits->SetName(Form("mg_%s_fulltrack_tbin_phi_hits", tag.Data()));
-    b.mg_tbin_phi_hits->SetTitle(Form("event %u side %d: FULLTRACK hits;timebin;global #phi", evt, side));
-
-    b.mg_tbin_phi_fits = new TMultiGraph();
-    b.mg_tbin_phi_fits->SetName(Form("mg_%s_fulltrack_tbin_phi_fits", tag.Data()));
-    b.mg_tbin_phi_fits->SetTitle(Form("event %u side %d: FULLTRACK fits;timebin;global #phi", evt, side));
-
-    b.mg_tbin_layer_hits = new TMultiGraph();
-    b.mg_tbin_layer_hits->SetName(Form("mg_%s_fulltrack_tbin_layer_hits", tag.Data()));
-    b.mg_tbin_layer_hits->SetTitle(Form("event %u side %d: FULLTRACK hits;timebin;radius", evt, side));
-
-    b.mg_tbin_layer_fits = new TMultiGraph();
-    b.mg_tbin_layer_fits->SetName(Form("mg_%s_fulltrack_tbin_layer_fits", tag.Data()));
-    b.mg_tbin_layer_fits->SetTitle(Form("event %u side %d: FULLTRACK fits;timebin;radius", evt, side));
-  
+    tbin_values.clear();
+    phi_values.clear();
+    radius_values.clear();
   }
 
-  SideBundle& get_side_bundle(std::map<int, SideBundle>& bundles,
-                              const int side,
-                              const unsigned int evt)
+  void add_fit_lines(std::vector<TPolyLine3D*>& lines,
+                     const FitResult& fit,
+                     const int color,
+                     const bool draw_xy)
   {
-    std::map<int, SideBundle>::iterator it = bundles.find(side);
-    if (it == bundles.end())
+    if (!fit.ok || fit.rmax <= fit.rmin) return;
+
+    const int npts = 120;
+    std::vector<double> seg_tbin;
+    std::vector<double> seg_phi;
+    std::vector<double> seg_radius;
+    double previous_phi = 0.0;
+    bool have_previous = false;
+
+    for (int i = 0; i < npts; ++i)
     {
-      const std::pair<std::map<int, SideBundle>::iterator, bool> inserted =
-        bundles.insert(std::make_pair(side, SideBundle()));
-      it = inserted.first;
-      make_side_bundle(it->second, side, evt);
-    }
-    return it->second;
-  }
+      const double f = static_cast<double>(i) / static_cast<double>(npts - 1);
+      const double radius = fit.rmin + f * (fit.rmax - fit.rmin);
+      double phi = fit.use_sagitta ? sagitta_phi_at_radius(radius, fit.phi_sagitta)
+                                   : fit.phi_slope * radius + fit.phi_intercept;
+      phi = wrap_phi(phi);
+      const double tbin = fit.tbin_slope * radius + fit.tbin_intercept;
 
-  void write_side_bundle(SideBundle& b, const int side, const unsigned int evt)
-  {
-    const TString tag = Form("evt%u_side%d", evt, side);
+      if (!is_good_number(phi) || !is_good_number(tbin) || !is_good_number(radius)) continue;
 
-    if (b.h3_adc_hits)
-    {
-      b.c3_adc_hits_fits =
-        new TCanvas(Form("c3_%s_fulltrack_adc_hits_fits", tag.Data()),
-                    Form("event %u side %d FULLTRACK ADC hits and full-track fits", evt, side),
-                    1200, 900);
-
-      b.h3_adc_hits->Draw("BOX2Z");
-      for (unsigned int iline = 0; iline < b.fit_lines_3d.size(); ++iline)
+      const bool crosses_phi_edge = have_previous && std::fabs(phi - previous_phi) > TMath::Pi();
+      if (crosses_phi_edge)
       {
-        if (!b.fit_lines_3d[iline]) continue;
-        b.fit_lines_3d[iline]->Draw("same");
+        flush_fit_segment(lines, seg_tbin, seg_phi, seg_radius, color, draw_xy);
       }
 
-      b.c3_adc_hits_fits->Modified();
-      b.c3_adc_hits_fits->Update();
-      b.c3_adc_hits_fits->Write();
+      seg_tbin.push_back(tbin);
+      seg_phi.push_back(phi);
+      seg_radius.push_back(radius);
+      previous_phi = phi;
+      have_previous = true;
     }
 
-    if (b.h3_xyz_hits)
-    {
-      b.c3_xyz_hits_fits =
-        new TCanvas(Form("c3_%s_fulltrack_xyz_hits_fits", tag.Data()),
-                    Form("event %u side %d FULLTRACK XYZ ADC hits, full-track fits, vertices", evt, side),
-                    1200, 900);
-
-      b.h3_xyz_hits->Draw("BOX2Z");
-      for (unsigned int iline = 0; iline < b.fit_lines_xyz.size(); ++iline)
-      {
-        if (!b.fit_lines_xyz[iline]) continue;
-        b.fit_lines_xyz[iline]->Draw("same");
-      }
-
-      for (unsigned int im = 0; im < b.vertex_markers_xyz.size(); ++im)
-      {
-        if (!b.vertex_markers_xyz[im]) continue;
-        b.vertex_markers_xyz[im]->Draw("same");
-      }
-
-      b.c3_xyz_hits_fits->Modified();
-      b.c3_xyz_hits_fits->Update();
-      b.c3_xyz_hits_fits->Write();
-    }
-    /*
-    if (b.mg_tbin_phi_hits && b.mg_tbin_phi_fits)
-    {
-      b.c_tbin_phi =
-        new TCanvas(Form("c_%s_fulltrack_tbin_phi", tag.Data()),
-                    Form("side %d FULLTRACK timebin vs global phi", side),
-                    1200, 900);
-      b.mg_tbin_phi_hits->Draw("AP");
-      b.mg_tbin_phi_fits->Draw("L");
-      b.c_tbin_phi->Modified();
-      b.c_tbin_phi->Update();
-      b.c_tbin_phi->Write();
-    }*/
-
-    if (b.mg_tbin_layer_hits && b.mg_tbin_layer_fits)
-    {
-      b.c_tbin_layer =
-        new TCanvas(Form("c_%s_fulltrack_tbin_layer", tag.Data()),
-                    Form("event %u side %d FULLTRACK timebin vs radius", evt, side),
-                    1200, 900);
-      b.mg_tbin_layer_hits->Draw("AP");
-      b.mg_tbin_layer_fits->Draw("L");
-      b.c_tbin_layer->Modified();
-      b.c_tbin_layer->Update();
-      b.c_tbin_layer->Write();
-    }
-
-    /*
-    if (b.mg_tbin_phi_hits) b.mg_tbin_phi_hits->Write();
-    if (b.mg_tbin_phi_fits) b.mg_tbin_phi_fits->Write();
-    if (b.mg_tbin_layer_hits) b.mg_tbin_layer_hits->Write();
-    if (b.mg_tbin_layer_fits) b.mg_tbin_layer_fits->Write();
-    */
+    flush_fit_segment(lines, seg_tbin, seg_phi, seg_radius, color, draw_xy);
   }
 }
 
@@ -522,17 +329,20 @@ FullTrackDisplay::FullTrackDisplay(const std::string& name,
   , m_maxEventDisplays(maxEventDisplays)
   , m_evt(0)
   , m_eventsSaved(0)
-  , m_outfile(0)
-  , m_tracks(0)
-  , m_hits(0)
-  , m_padMap(0)
+  , m_outfile(nullptr)
+  , m_tracks(nullptr)
+  , m_hits(nullptr)
+  , m_idealPadMap(new IdealPadMap())
+  , m_fitMode(Fitter::FIT_SAGITTA)
+  , m_fitWeightPower(1.0)
+  , m_fitWeightFloorFrac(0.05)
 {
 }
 
 FullTrackDisplay::~FullTrackDisplay()
 {
-  // TPC_PADMAP is owned by the node tree, not by this display module.
-  m_padMap = 0;
+  delete m_idealPadMap;
+  m_idealPadMap = nullptr;
 }
 
 int FullTrackDisplay::Init(PHCompositeNode*)
@@ -545,6 +355,14 @@ int FullTrackDisplay::Init(PHCompositeNode*)
     return Fun4AllReturnCodes::ABORTRUN;
   }
 
+  if (!m_idealPadMap) m_idealPadMap = new IdealPadMap();
+  if (!m_idealPadMap->is_loaded() && m_idealPadMap->load_from_cdb(Verbosity()) != 0)
+  {
+    std::cerr << "FullTrackDisplay::Init - failed to load IdealPadMap from CDB" << std::endl;
+    return Fun4AllReturnCodes::ABORTRUN;
+  }
+
+  m_outfile->mkdir("events");
   std::cout << "FullTrackDisplay::Init - writing up to "
             << m_maxEventDisplays << " events to "
             << m_outfilename << std::endl;
@@ -554,225 +372,190 @@ int FullTrackDisplay::Init(PHCompositeNode*)
 
 int FullTrackDisplay::process_event(PHCompositeNode* topNode)
 {
-  if (!get_nodes(topNode))
+  ++m_evt;
+
+  if (!get_nodes(topNode)) return Fun4AllReturnCodes::EVENT_OK;
+  if (!m_outfile || m_eventsSaved >= m_maxEventDisplays) return Fun4AllReturnCodes::EVENT_OK;
+
+  const unsigned int ntracks = m_tracks ? m_tracks->size() : 0;
+
+  TDirectory* eventsTop = m_outfile->GetDirectory("events");
+  if (!eventsTop) eventsTop = m_outfile->mkdir("events");
+  eventsTop->cd();
+
+  TDirectory* eventDir = eventsTop->mkdir(Form("event_%06u", m_evt));
+  if (!eventDir)
   {
-    ++m_evt;
+    std::cerr << "FullTrackDisplay::process_event - failed to create event directory" << std::endl;
     return Fun4AllReturnCodes::EVENT_OK;
   }
+  eventDir->cd();
 
-  if (!m_outfile || m_eventsSaved >= m_maxEventDisplays)
+  TH3D* h3[2] = {nullptr, nullptr};
+  TH3D* h3xy[2] = {nullptr, nullptr};
+  TH3D* h3_single[2] = {nullptr, nullptr};
+  TH3D* h3xy_single[2] = {nullptr, nullptr};
+
+  std::vector<TPolyLine3D*> fit_lines_tpr[2];
+  std::vector<TPolyLine3D*> fit_lines_txy[2];
+  std::vector<TPolyLine3D*> fit_lines_tpr_single[2];
+  std::vector<TPolyLine3D*> fit_lines_txy_single[2];
+
+  std::set<unsigned long long> filled_hit_ids[2];
+  std::set<unsigned long long> filled_hit_ids_single[2];
+
+  for (unsigned int side = 0; side < 2; ++side)
   {
-    ++m_evt;
-    return Fun4AllReturnCodes::EVENT_OK;
+    h3[side] = new TH3D(Form("h3_evt%06u_fulltrack_hits_side%u", m_evt, side),
+                        Form("event %u side %u full tracks;timebin;global #phi;radius [cm]", m_evt, side),
+                        512, -0.5, 511.5,
+                        720, -TMath::Pi(), TMath::Pi(),
+                        100, 30, 80.0);
+    h3[side]->SetStats(0);
+    h3[side]->SetDirectory(nullptr);
+
+    h3xy[side] = new TH3D(Form("h3_evt%06u_fulltrack_hits_xy_side%u", m_evt, side),
+                          Form("event %u side %u full tracks;timebin;x [cm];y [cm]", m_evt, side),
+                          512, -0.5, 511.5,
+                          160, -80.0, 80.0,
+                          160, -80.0, 80.0);
+    h3xy[side]->SetStats(0);
+    h3xy[side]->SetDirectory(nullptr);
+
+    h3_single[side] = new TH3D(Form("h3_evt%06u_single_module_fulltrack_hits_side%u", m_evt, side),
+                               Form("event %u side %u single-module full tracks;timebin;global #phi;radius [cm]", m_evt, side),
+                               512, -0.5, 511.5,
+                               720, -TMath::Pi(), TMath::Pi(),
+                               100, 30, 80.0);
+    h3_single[side]->SetStats(0);
+    h3_single[side]->SetDirectory(nullptr);
+
+    h3xy_single[side] = new TH3D(Form("h3_evt%06u_single_module_fulltrack_hits_xy_side%u", m_evt, side),
+                                 Form("event %u side %u single-module full tracks;timebin;x [cm];y [cm]", m_evt, side),
+                                 512, -0.5, 511.5,
+                                 160, -80.0, 80.0,
+                                 160, -80.0, 80.0);
+    h3xy_single[side]->SetStats(0);
+    h3xy_single[side]->SetDirectory(nullptr);
   }
 
-  m_outfile->cd();
-  TDirectory* event_dir =
-    m_outfile->mkdir(Form("event_%u_fulltracks", m_evt));
-
-  if (!event_dir)
-  {
-    std::cerr << "FullTrackDisplay::process_event - failed to create event directory"
-              << std::endl;
-    ++m_evt;
-    return Fun4AllReturnCodes::EVENT_OK;
-  }
-
-  event_dir->cd();
-
-  std::map<int, SideBundle> bundles;
-
-  for (unsigned int itrk = 0; itrk < m_tracks->size(); ++itrk)
+  for (unsigned int itrk = 0; itrk < ntracks; ++itrk)
   {
     const FullTrack* trk = m_tracks->get_track(itrk);
     if (!trk) continue;
 
-    const int side = trk->get_side();
-    SideBundle& b = get_side_bundle(bundles, side, m_evt);
-    const int color = track_color(itrk);
-    const unsigned int tid = trk->get_track_id();
-
-    // Add reconstructed vertices on this side only to the XYZ 3D canvas.
-    // Do not draw vertices on c3_adc_hits_fits, which is the timebin-phi-radius view.
-    // XYZ display axes are x = r cos(phi), y = r sin(phi), z = timebin.
-    const double vertex_display_min_dtbin = 10.0;
-    if (trk->get_vertex_valid() &&
-        trk->get_vertex_npairs() > 0 &&
-        is_good_number(trk->get_vertex_tbin()) &&
-        is_good_number(trk->get_vertex_x()) &&
-        is_good_number(trk->get_vertex_y()) &&
-        !has_nearby_vertex_marker(b,
-                                  trk->get_vertex_tbin(),
-                                  vertex_display_min_dtbin))
-    {
-      TPolyMarker3D* vm = new TPolyMarker3D(1);
-      vm->SetPoint(0,
-                   trk->get_vertex_x(),
-                   trk->get_vertex_y(),
-                   trk->get_vertex_tbin());
-      style_vertex_marker_3d(vm);
-      b.vertex_markers_xyz.push_back(vm);
-      b.vertex_marker_tbins.push_back(trk->get_vertex_tbin());
-    }
+    const int trk_side = trk->get_side();
+    if (trk_side < 0 || trk_side > 1) continue;
+    const unsigned int side = static_cast<unsigned int>(trk_side);
+    const bool single_module_track = (trk->get_nsegments() == 1U);
 
     std::vector<HitPoint> pts;
     pts.reserve(trk->size_hit_indices());
 
-    std::vector<double> hit_tbin;
-    std::vector<double> hit_phi;
-    std::vector<double> hit_layer;
-
-    for (unsigned int ihit = 0; ihit < trk->size_hit_indices(); ++ihit)
+    for (unsigned int ih = 0; ih < trk->size_hit_indices(); ++ih)
     {
-      const FullTrack::HitIndex idx = trk->get_hit_index(ihit);
+      const FullTrack::HitIndex idx = trk->get_hit_index(ih);
       const HitPoint p = make_hit_point(idx.first, idx.second);
       if (!p.ok) continue;
-      if (p.side != side) continue;
-
-      const unsigned long long uid = make_unique_hit_id(idx.first, idx.second);
-      if (b.filled_hit_ids.find(uid) == b.filled_hit_ids.end())
-      {
-        if (b.h3_adc_hits)
-        {
-          b.h3_adc_hits->Fill(static_cast<double>(p.tbin),
-                              p.global_phi,
-                              p.radius,
-                              static_cast<double>(p.adc));
-        }
-        if (b.h3_xyz_hits)
-        {
-          const double x = p.radius * std::cos(p.global_phi);
-          const double y = p.radius * std::sin(p.global_phi);
-          b.h3_xyz_hits->Fill(x, y, static_cast<double>(p.tbin),
-                              static_cast<double>(p.adc));
-        }
-        b.filled_hit_ids.insert(uid);
-      }
 
       pts.push_back(p);
-      hit_tbin.push_back(static_cast<double>(p.tbin));
-      hit_phi.push_back(p.global_phi);
-      hit_layer.push_back(p.radius);
+      const unsigned long long uid = make_unique_hit_id(p.hitsetkey, p.hitkey);
+      const double phi = wrap_phi(p.global_phi);
+      const double x = p.radius * std::cos(p.global_phi);
+      const double y = p.radius * std::sin(p.global_phi);
+
+      if (filled_hit_ids[side].insert(uid).second)
+      {
+        h3[side]->Fill(static_cast<double>(p.tbin), phi, p.radius, static_cast<double>(p.adc));
+        h3xy[side]->Fill(static_cast<double>(p.tbin), x, y, static_cast<double>(p.adc));
+      }
+
+      if (single_module_track && filled_hit_ids_single[side].insert(uid).second)
+      {
+        h3_single[side]->Fill(static_cast<double>(p.tbin), phi, p.radius, static_cast<double>(p.adc));
+        h3xy_single[side]->Fill(static_cast<double>(p.tbin), x, y, static_cast<double>(p.adc));
+      }
     }
 
-    if (pts.empty()) continue;
+    const FitResult fit = fit_full_track_points(pts, m_fitMode, m_fitWeightPower, m_fitWeightFloorFrac);
+    add_fit_lines(fit_lines_tpr[side], fit, track_color(itrk), false);
+    add_fit_lines(fit_lines_txy[side], fit, track_color(itrk), true);
 
-    const std::string hit_phi_name =
-      Form("g_side%d_fulltrk%u_tbin_phi_hits", side, tid);
-    const std::string hit_layer_name =
-      Form("g_side%d_fulltrk%u_tbin_layer_hits", side, tid);
-
-    b.mg_tbin_phi_hits->Add(make_graph(hit_tbin, hit_phi,
-                                       hit_phi_name, color, false), "P");
-    b.mg_tbin_layer_hits->Add(make_graph(hit_tbin, hit_layer,
-                                         hit_layer_name, color, false), "P");
-
-    const unsigned int first_layer = trk->get_first_layer();
-    const unsigned int last_layer = trk->get_last_layer();
-
-    if (last_layer >= first_layer &&
-        is_good_number(trk->get_phi_slope()) &&
-        is_good_number(trk->get_phi_intercept()) &&
-        is_good_number(trk->get_tbin_slope()) &&
-        is_good_number(trk->get_tbin_intercept()))
+    if (single_module_track)
     {
-      std::vector<double> fit_tbin;
-      std::vector<double> fit_phi_unwrapped;
-      std::vector<double> fit_layer;
-
-      for (unsigned int il = first_layer; il <= last_layer; ++il)
-      {
-        const int reg = layer_to_region(il);
-        if (reg < 0) continue;
-
-        double tbin = 0.0;
-        double phi = 0.0;
-        double radius = 0.0;
-        if (!fulltrack_fit_point_to_global_phi_radius(trk, m_padMap, il,
-                                                      tbin, phi, radius)) continue;
-
-        if (!fit_phi_unwrapped.empty())
-        {
-          phi = unwrap_near_reference(phi, fit_phi_unwrapped.back());
-        }
-
-        fit_tbin.push_back(tbin);
-        fit_phi_unwrapped.push_back(phi);
-        fit_layer.push_back(radius);
-      }
-
-      std::vector<ClippedFitSegment> fit_segments;
-      make_clipped_fit_segments(fit_tbin, fit_phi_unwrapped, fit_layer, fit_segments);
-
-      for (unsigned int iseg = 0; iseg < fit_segments.size(); ++iseg)
-      {
-        const ClippedFitSegment& seg = fit_segments[iseg];
-
-        TPolyLine3D* line = new TPolyLine3D(2);
-        const std::string line_name =
-          Form("line3_side%d_fulltrk%u_fit_seg%u", side, tid, iseg);
-
-        line->SetPoint(0, seg.tbin0, seg.phi0, seg.radius0);
-        line->SetPoint(1, seg.tbin1, seg.phi1, seg.radius1);
-
-        style_fit_line_3d(line, color);
-        b.fit_lines_3d.push_back(line);
-        b.fit_line_names_3d.push_back(line_name);
-
-        TPolyLine3D* line_xyz = new TPolyLine3D(2);
-        const double x0 = seg.radius0 * std::cos(seg.phi0);
-        const double y0 = seg.radius0 * std::sin(seg.phi0);
-        const double x1 = seg.radius1 * std::cos(seg.phi1);
-        const double y1 = seg.radius1 * std::sin(seg.phi1);
-        line_xyz->SetPoint(0, x0, y0, seg.tbin0);
-        line_xyz->SetPoint(1, x1, y1, seg.tbin1);
-        style_fit_line_3d(line_xyz, color);
-        b.fit_lines_xyz.push_back(line_xyz);
-
-        std::vector<double> seg_tbin;
-        std::vector<double> seg_phi;
-        std::vector<double> seg_layer;
-        seg_tbin.push_back(seg.tbin0);
-        seg_tbin.push_back(seg.tbin1);
-        seg_phi.push_back(seg.phi0);
-        seg_phi.push_back(seg.phi1);
-        seg_layer.push_back(seg.radius0);
-        seg_layer.push_back(seg.radius1);
-
-        const std::string fit_phi_name =
-          Form("g_side%d_fulltrk%u_tbin_phi_fit_seg%u", side, tid, iseg);
-        const std::string fit_layer_name =
-          Form("g_side%d_fulltrk%u_tbin_layer_fit_seg%u", side, tid, iseg);
-
-        b.mg_tbin_phi_fits->Add(make_graph(seg_tbin, seg_phi,
-                                           fit_phi_name, color, true), "L");
-        b.mg_tbin_layer_fits->Add(make_graph(seg_tbin, seg_layer,
-                                             fit_layer_name, color, true), "L");
-      }
+      add_fit_lines(fit_lines_tpr_single[side], fit, track_color(itrk), false);
+      add_fit_lines(fit_lines_txy_single[side], fit, track_color(itrk), true);
     }
   }
 
-  for (std::map<int, SideBundle>::iterator it = bundles.begin();
-       it != bundles.end(); ++it)
+  for (unsigned int side = 0; side < 2; ++side)
   {
-    write_side_bundle(it->second, it->first, m_evt);
+    TCanvas* c3 = new TCanvas(Form("c3_evt%06u_timebin_phi_radius_fits_side%u", m_evt, side),
+                              Form("event %u side %u full-track hits and display fits", m_evt, side),
+                              1200, 900);
+    h3[side]->Draw("BOX2Z");
+    for (unsigned int iline = 0; iline < fit_lines_tpr[side].size(); ++iline)
+    {
+      if (fit_lines_tpr[side][iline]) fit_lines_tpr[side][iline]->Draw("same");
+    }
+    c3->Modified();
+    c3->Update();
+    c3->Write();
+
+    /*TCanvas* c3xy = new TCanvas(Form("c3_evt%06u_timebin_x_y_fits_side%u", m_evt, side),
+                                Form("event %u side %u full-track hits and display fits", m_evt, side),
+                                1200, 900);
+    h3xy[side]->Draw("BOX2Z");
+    for (unsigned int iline = 0; iline < fit_lines_txy[side].size(); ++iline)
+    {
+      if (fit_lines_txy[side][iline]) fit_lines_txy[side][iline]->Draw("same");
+    }
+    c3xy->Modified();
+    c3xy->Update();
+    c3xy->Write();
+    */
+
+    TCanvas* c3_single = new TCanvas(Form("c3_evt%06u_timebin_phi_radius_fits_single_module_side%u", m_evt, side),
+                                     Form("event %u side %u single-module full-track hits and display fits", m_evt, side),
+                                     1200, 900);
+    h3_single[side]->Draw("BOX2Z");
+    for (unsigned int iline = 0; iline < fit_lines_tpr_single[side].size(); ++iline)
+    {
+      if (fit_lines_tpr_single[side][iline]) fit_lines_tpr_single[side][iline]->Draw("same");
+    }
+    c3_single->Modified();
+    c3_single->Update();
+    c3_single->Write();
+/*
+    TCanvas* c3xy_single = new TCanvas(Form("c3_evt%06u_timebin_x_y_fits_single_module_side%u", m_evt, side),
+                                       Form("event %u side %u single-module full-track hits and display fits", m_evt, side),
+                                       1200, 900);
+    h3xy_single[side]->Draw("BOX2Z");
+    for (unsigned int iline = 0; iline < fit_lines_txy_single[side].size(); ++iline)
+    {
+      if (fit_lines_txy_single[side][iline]) fit_lines_txy_single[side][iline]->Draw("same");
+    }
+    c3xy_single->Modified();
+    c3xy_single->Update();
+    c3xy_single->Write();
+    */
   }
+
+  std::cout << "FullTrackDisplay - saved event " << m_evt
+            << " with " << ntracks << " full tracks" << std::endl;
 
   ++m_eventsSaved;
-  ++m_evt;
   return Fun4AllReturnCodes::EVENT_OK;
 }
 
 int FullTrackDisplay::End(PHCompositeNode*)
 {
-  if (!m_outfile) return Fun4AllReturnCodes::EVENT_OK;
-
-  m_outfile->cd();
-  m_outfile->Write();
-  m_outfile->Close();
-
-  delete m_outfile;
-  m_outfile = 0;
+  if (m_outfile)
+  {
+    m_outfile->Close();
+    delete m_outfile;
+    m_outfile = nullptr;
+  }
 
   std::cout << "FullTrackDisplay::End - events seen: " << m_evt
             << ", events written: " << m_eventsSaved
@@ -784,8 +567,7 @@ int FullTrackDisplay::End(PHCompositeNode*)
 bool FullTrackDisplay::get_nodes(PHCompositeNode* topNode)
 {
   m_hits = findNode::getClass<TrkrHitSetContainer>(topNode, "TRKR_HITSET");
-  m_tracks = findNode::getClass<FullTrackContainer>(topNode,
-                                                   m_trackNodeName.c_str());
+  m_tracks = findNode::getClass<FullTrackContainer>(topNode, m_trackNodeName.c_str());
 
   if (!m_tracks)
   {
@@ -801,16 +583,16 @@ bool FullTrackDisplay::get_nodes(PHCompositeNode* topNode)
          i < sizeof(candidate_names) / sizeof(candidate_names[0]) && !m_tracks;
          ++i)
     {
-      m_tracks = findNode::getClass<FullTrackContainer>(topNode,
-                                                       candidate_names[i]);
+      m_tracks = findNode::getClass<FullTrackContainer>(topNode, candidate_names[i]);
       if (m_tracks) m_trackNodeName = candidate_names[i];
     }
   }
 
+  if (!m_idealPadMap) m_idealPadMap = new IdealPadMap();
+
   if (!m_tracks)
   {
-    std::cerr << "FullTrackDisplay - could not find FullTrackContainer node"
-              << std::endl;
+    std::cerr << "FullTrackDisplay - could not find FullTrackContainer node" << std::endl;
     return false;
   }
 
@@ -820,16 +602,9 @@ bool FullTrackDisplay::get_nodes(PHCompositeNode* topNode)
     return false;
   }
 
-  m_padMap = findNode::getClass<TpcPadMap>(topNode, "TPC_PADMAP");
-  if (!m_padMap)
+  if (!m_idealPadMap || !m_idealPadMap->is_loaded())
   {
-    std::cerr << "FullTrackDisplay - missing TPC_PADMAP" << std::endl;
-    return false;
-  }
-
-  if (!m_padMap->isValid())
-  {
-    std::cerr << "FullTrackDisplay - TPC_PADMAP is invalid" << std::endl;
+    std::cerr << "FullTrackDisplay - IdealPadMap is not loaded" << std::endl;
     return false;
   }
 
@@ -842,7 +617,7 @@ FullTrackDisplay::make_hit_point(const TrkrDefs::hitsetkey hsk,
 {
   HitPoint p;
 
-  TrkrHitSet* hitset = m_hits->findHitSet(hsk);
+  TrkrHitSet* hitset = m_hits ? m_hits->findHitSet(hsk) : nullptr;
   if (!hitset) return p;
 
   TrkrHit* hit = hitset->getHit(hk);
@@ -850,25 +625,24 @@ FullTrackDisplay::make_hit_point(const TrkrDefs::hitsetkey hsk,
 
   p.hitsetkey = hsk;
   p.hitkey = hk;
-
   p.layer = TrkrDefs::getLayer(hsk);
-  const int region = layer_to_region(p.layer);
-  if (region < 0) return p;
-
-  p.region = static_cast<unsigned int>(region);
   p.side = static_cast<int>(TpcDefs::getSide(hsk));
-  p.sector = static_cast<unsigned int>(TpcDefs::getSectorId(hsk));
   p.pad = TpcDefs::getPad(hk);
   p.tbin = TpcDefs::getTBin(hk);
   p.adc = hit->getAdc();
-  if (!m_padMap) return p;
-  p.global_phi =
-    wrap_to_pi(m_padMap->get_global_phi(static_cast<unsigned int>(p.side),
-                                        p.region,
-                                        static_cast<double>(p.pad)));
-  p.radius = m_padMap->get_local_radius(p.region, p.layer);
 
-  if (!is_good_number(p.global_phi) || !is_good_number(p.radius)) return p;
+  if (p.layer < 7 || p.layer > 54) return p;
+  p.region = static_cast<unsigned int>((p.layer - 7) / 16);
+
+  if (!m_idealPadMap) return p;
+  const unsigned int pads_per_sector = m_idealPadMap->get_pads_per_sector_for_layer(p.layer);
+  if (pads_per_sector == 0U) return p;
+
+  p.sector = (p.pad / pads_per_sector) % 12U;
+  p.radius = m_idealPadMap->get_radius(p.layer);
+  p.global_phi = wrap_phi(m_idealPadMap->get_phi(static_cast<unsigned int>(p.side), p.layer, p.pad));
+
+  if (!is_good_number(p.radius) || !is_good_number(p.global_phi)) return p;
 
   p.ok = true;
   return p;
