@@ -17,14 +17,16 @@ AM_LDFLAGS = \
 
 pkginclude_HEADERS = \
   InModuleTrackDisplay.h \
-  FullTrackDisplay.h
+  FullTrackDisplay.h \
+  TpcPolyTrackDisplay.h
 
 lib_LTLIBRARIES = \
   libInModuleTrackDisplay.la
 
 libInModuleTrackDisplay_la_SOURCES = \
   InModuleTrackDisplay.cc \
-  FullTrackDisplay.cc
+  FullTrackDisplay.cc \
+  TpcPolyTrackDisplay.cc
 
 libInModuleTrackDisplay_la_LIBADD = \
   -lInModuleTracks \
