@@ -41,8 +41,12 @@
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/TpcPadMapBuilder.h>
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/InModuleTracks.h>
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/FullTrackConnector.h>
+#include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/TpcPolyTrackReco.h>
+#include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/FullTrackVertexer.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/InModuleTrackDisplay.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/FullTrackDisplay.h>
+#include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyTrackDisplay.h>
+
 
 
 R__LOAD_LIBRARY(libfun4all.so)
@@ -68,11 +72,12 @@ class SkipFirstN : public SubsysReco {
   int target_ = 0;
   int count_  = 0;
 };
-//.x Fun4All_raw_hit_ZeroField_frog.C(10, 81000, 0, ".", 0, "run3pp", "ana537_nocdbtag_v001","HITS_ppZeroField")
-//.x Fun4All_raw_hit_ZeroField_frog.C(10, 81000, 0, ".", 0, "run3pp", "ana537_nocdbtag_v001","HITS_ppZeroField")
+//xxxxxxxxxxxxxxxxxxxxxxxxxx  .x Fun4All_raw_hit_ZeroField_frog.C(10, 81000, 0, ".", 0, "run3pp", "ana537_nocdbtag_v001","HITS_ppZeroField")
+//xxxxxxxxxxxxxxxxxxxxxxxxxx  .x Fun4All_raw_hit_ZeroField_frog.C(10, 81000, 0, ".", 0, "run3pp", "ana537_nocdbtag_v001","HITS_ppZeroField")
 
 
-//.x Fun4All_raw_hit_ZeroField_frog.C(3, 79513, 0, ".", 0, "run3pp", "ana537_nocdbtag_v001","HITS_ppFieldOn")
+//xxxxxxxxxxxxxxxxxxxxxxxxxx  .x Fun4All_raw_hit_ZeroField_frog.C(3, 79513, 0, ".", 0, "run3pp", "ana537_nocdbtag_v001","HITS_ppFieldOn")
+//.x Fun4All_raw_hit_ZeroField_frog.C(2, 79513, 0, ".", 0, "run3pp", "ana532_nocdbtag_v001","HITS_ppFieldOn")
 
 //==========AuAu Zero Field
 // 111x111   75555-75557 - 1mrad; 75557 - 0mrad
@@ -155,15 +160,37 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
 }
 
   int i = 0;
+    std::stringstream nice_runnumber;
+  nice_runnumber << std::setw(8) << std::setfill('0') << std::to_string(runnumber);
+
+  int rounded_up = 100 * (std::ceil((float) runnumber / 100));
+  std::stringstream nice_rounded_up;
+  nice_rounded_up << std::setw(8) << std::setfill('0') << std::to_string(rounded_up);
+
+  int rounded_down = 100 * (std::floor((float) runnumber / 100));
+  std::stringstream nice_rounded_down;
+  nice_rounded_down << std::setw(8) << std::setfill('0') << std::to_string(rounded_down);
 
   for (unsigned int is = 0; is < streams.size(); ++is)
   {
     const std::string stream = streams[is];
 
     std::string filename = "DST_" + dsttype + "_" + stream + "_" + collision + "_" + production + "-" +  runstr.str() + "-" + segstr.str() + ".root";
-    std::string filepath = filename;
+   std::string filepath = "/sphenix/lustre01/sphnxpro/production/" + collision + "/physics/" + production + "/DST_" + dsttype + "_" + stream + "/run_" + nice_rounded_down.str()  + "_" + nice_rounded_up.str()  + "/" + filename;
+
+    std::ifstream testfile(filepath.c_str());
+    if (!testfile.good())
+    {
+      std::cout << "Skipping missing DST: " << filepath << std::endl;
+      continue;
+    }
 
     std::cout << "Adding DST: " << filepath << std::endl;
+    if (i == 0)
+    {
+      rc->set_IntFlag("RUNNUMBER", runnumber);
+      rc->set_uint64Flag("TIMESTAMP", runnumber);
+    }
 
     std::string inputname = "InputManager" + std::to_string(i);
     auto *hitsin = new Fun4AllDstInputManager(inputname);
@@ -180,9 +207,6 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
   Enable::CDB = true;
   rc->set_StringFlag("CDB_GLOBALTAG", "newcdbtag");
   rc->set_uint64Flag("TIMESTAMP", runnumber);
-
-  std::stringstream nice_runnumber;
-  nice_runnumber << std::setw(8) << std::setfill('0') << std::to_string(runnumber);
 
  
 
@@ -256,19 +280,58 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
   Reject_Laser_Events();
 
 
-  se->registerSubsystem(new TpcPadMapBuilder("TpcPadMapBuilder", "TPC_PADMAP"));
+
   se->registerSubsystem( new InModuleTracks());
   se->registerSubsystem( new FullTrackConnector());
+  se->registerSubsystem( new TpcPolyTrackReco());
+
+  //se->registerSubsystem(new TpcPadMapBuilder("TpcPadMapBuilder", "TPC_PADMAP"));
+
+  //  se->registerSubsystem( new InModuleTrackDisplay( "InModuleTrackDisplay", "inmodule_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
+  //  InModuleTrackDisplay* imt = new InModuleTrackDisplay("InModuleTrackDisplay", "inmodule_display_"+outfilename+"_" + to_string(runnumber) + ".root" );
+  //  imt->Verbosity(10);   // or 2, 3, etc.
+  //  se->registerSubsystem(imt);
+
+
+  // se->registerSubsystem( new FullTrackDisplay( "FullTrackDisplay", "full_track_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
+
+  // auto display = new FullTrackDisplay( "FullTrackDisplay", "34_full_track_display_"+outfilename+"_" + to_string(runnumber) + ".root" );
+   //display->setPlotNModulesRange(1, 2);
+   // display->setPlotNModulesRange(3, 4);
+   // display->setPlotDirectionRange(-0.02, 0.02);  // radius-phi angle
+   //display->setPlotThetaRange(-1.05, 1.05);        // radius-timebin angle
+   //display->setPlotCurvatureRange(-0.005, 0.005);
+   // se->registerSubsystem(display);
+    
+
+
+//se->registerSubsystem( new TpcPolyTrackDisplay( "TpcPolyTrackDisplay", "tpc_poly_track_display_"+outfilename+"_" + to_string(runnumber) + ".root",  "TPCPOLYTRACKS", 2));
+    auto display = new TpcPolyTrackDisplay( "TpcPolyTrackDisplay", "tpc_poly_track_display_"+outfilename+"_" + to_string(runnumber) + ".root",  "TPCPOLYTRACKS", 2);
+    display->setHighPtMin(0.5);
+    display->setHighPtMaxAbsD0(1.0);
+    se->registerSubsystem(display);
+/*
+auto poly = new TpcPolyTrackReco();
+poly->setInputNodeName("FULLTRACKS");
+poly->setOutputNodeName("TPCPOLYTRACKS");
+poly->setT0(360.0);
+poly->setTpcAdcClock(50.037280);
+poly->setStartZ(-105.5, 105.5); // side 0, side 1
+se->registerSubsystem(poly);
+*/
+/*
     FullTrackConnector* fullconn = new FullTrackConnector("FullTrackConnector", "FullTracks.root");
+    fullconn->Verbosity(10);
     fullconn->setConnectMaxLayerGap(17);
     //fullconn->setConnectWindow(0.08, 20.0);
     //fullconn->setConnectSlopeWindow(5.0, 0.03);
     se->registerSubsystem(fullconn);
 
 
-  //se->registerSubsystem( new InModuleTrackDisplay( "InModuleTrackDisplay", "inmodule_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
-  se->registerSubsystem( new FullTrackDisplay( "FullTrackDisplay", "full_track_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
-
+    FullTrackVertexer* vtx = new FullTrackVertexer();
+    vtx->Verbosity(10);   // or 2, 3, etc.
+    se->registerSubsystem(vtx);
+*/
    
  //std::cout<< "Output DST "<<Form("%s/output_DST/%s_%d_%d.root",outdir.c_str(), outfilename.c_str(), runnumber, segment)  << std::endl;
   Fun4AllOutputManager *out = new Fun4AllDstOutputManager("out", Form("%s/output_DST/%s_%d_%d.root",outdir.c_str(), outfilename.c_str(), runnumber, segment));
