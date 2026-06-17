@@ -3,6 +3,8 @@
 #include "Fitter.h"
 #include "FullTrack.h"
 #include "FullTrackContainer.h"
+#include "FullTrackVertex.h"
+#include "FullTrackVertexContainer.h"
 #include "IdealPadMap.h"
 
 #include <fun4all/Fun4AllReturnCodes.h>
@@ -21,12 +23,14 @@
 #include <TH3D.h>
 #include <TMath.h>
 #include <TPolyLine3D.h>
+#include <TPolyMarker3D.h>
 #include <TString.h>
 
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -75,6 +79,90 @@ namespace
     line->SetLineColor(color);
     line->SetLineWidth(4);
     line->SetLineStyle(1);
+  }
+
+  void style_vertex_marker_3d(TPolyMarker3D* marker, const int color)
+  {
+    if (!marker) return;
+    marker->SetMarkerColor(color);
+    marker->SetMarkerStyle(20);
+    marker->SetMarkerSize(1.6);
+  }
+
+  TPolyMarker3D* make_vertex_marker(const double timebin0,
+                                    const double d0,
+                                    const int color,
+                                    const bool draw_xy)
+  {
+    TPolyMarker3D* marker = new TPolyMarker3D(1);
+    if (draw_xy)
+    {
+      marker->SetPoint(0, timebin0, 0.0, 0.0);
+    }
+    else
+    {
+      marker->SetPoint(0, timebin0, wrap_phi(d0), 0.0);
+    }
+    style_vertex_marker_3d(marker, color);
+    return marker;
+  }
+
+  TPolyMarker3D* make_collision_marker(const double timebin0,
+                                       const double radius,
+                                       const double phi,
+                                       const bool draw_xy)
+  {
+    TPolyMarker3D* marker = new TPolyMarker3D(1);
+    if (draw_xy)
+    {
+      marker->SetPoint(0, timebin0, radius * std::cos(phi), radius * std::sin(phi));
+    }
+    else
+    {
+      marker->SetPoint(0, timebin0, wrap_phi(phi), radius);
+    }
+    marker->SetMarkerColor(kBlack);
+    marker->SetMarkerStyle(29);
+    marker->SetMarkerSize(9.0);
+    return marker;
+  }
+
+  TPolyLine3D* make_collision_cross_line(const double x0,
+                                         const double y0,
+                                         const double z0,
+                                         const double dx,
+                                         const double dy,
+                                         const double dz)
+  {
+    TPolyLine3D* line = new TPolyLine3D(2);
+    line->SetPoint(0, x0 - dx, y0 - dy, z0 - dz);
+    line->SetPoint(1, x0 + dx, y0 + dy, z0 + dz);
+    line->SetLineColor(kBlack);
+    line->SetLineWidth(8);
+    line->SetLineStyle(1);
+    return line;
+  }
+
+  void add_collision_cross(std::vector<TPolyLine3D*>& lines,
+                           const double timebin0,
+                           const double radius,
+                           const double phi,
+                           const bool draw_xy)
+  {
+    if (draw_xy)
+    {
+      const double x = radius * std::cos(phi);
+      const double y = radius * std::sin(phi);
+      lines.push_back(make_collision_cross_line(timebin0, x, y, 18.0, 0.0, 0.0));
+      lines.push_back(make_collision_cross_line(timebin0, x, y, 0.0, 8.0, 0.0));
+      lines.push_back(make_collision_cross_line(timebin0, x, y, 0.0, 0.0, 8.0));
+    }
+    else
+    {
+      lines.push_back(make_collision_cross_line(timebin0, wrap_phi(phi), radius, 18.0, 0.0, 0.0));
+      lines.push_back(make_collision_cross_line(timebin0, wrap_phi(phi), radius, 0.0, 0.08, 0.0));
+      lines.push_back(make_collision_cross_line(timebin0, wrap_phi(phi), radius, 0.0, 0.0, 8.0));
+    }
   }
 
   double sagitta_model_derivative(const double xrot,
@@ -350,6 +438,7 @@ FullTrackDisplay::FullTrackDisplay(const std::string& name,
   , m_outfile(nullptr)
   , m_tracks(nullptr)
   , m_hits(nullptr)
+  , m_vertices(nullptr)
   , m_idealPadMap(new IdealPadMap())
   , m_fitMode(Fitter::FIT_SAGITTA)
   , m_fitWeightPower(1.0)
@@ -426,9 +515,54 @@ int FullTrackDisplay::process_event(PHCompositeNode* topNode)
   std::vector<TPolyLine3D*> fit_lines_txy[2];
   std::vector<TPolyLine3D*> fit_lines_tpr_single[2];
   std::vector<TPolyLine3D*> fit_lines_txy_single[2];
+  std::vector<TPolyMarker3D*> vertex_points_tpr[2];
+  std::vector<TPolyMarker3D*> vertex_points_txy[2];
+  TPolyMarker3D* collision_point_tpr[2] = {nullptr, nullptr};
+  TPolyMarker3D* collision_point_txy[2] = {nullptr, nullptr};
+  std::vector<TPolyLine3D*> collision_cross_tpr[2];
+  std::vector<TPolyLine3D*> collision_cross_txy[2];
 
   std::set<unsigned long long> filled_hit_ids[2];
   std::set<unsigned long long> filled_hit_ids_single[2];
+
+  std::map<unsigned int, const FullTrackVertex*> vertices_by_track_id;
+  if (m_vertices)
+  {
+    for (unsigned int ivtx = 0; ivtx < m_vertices->size(); ++ivtx)
+    {
+      const FullTrackVertex* vtx = m_vertices->get_vertex(ivtx);
+      if (!vtx || !vtx->isValid()) continue;
+      vertices_by_track_id[vtx->get_track_id()] = vtx;
+    }
+
+    if (m_vertices->get_collision_vertex_valid() &&
+        is_good_number(m_vertices->get_collision_timebin()) &&
+        is_good_number(m_vertices->get_collision_radius()) &&
+        is_good_number(m_vertices->get_collision_phi()))
+    {
+      for (unsigned int side = 0; side < 2; ++side)
+      {
+        collision_point_tpr[side] = make_collision_marker(m_vertices->get_collision_timebin(),
+                                                          m_vertices->get_collision_radius(),
+                                                          m_vertices->get_collision_phi(),
+                                                          false);
+        collision_point_txy[side] = make_collision_marker(m_vertices->get_collision_timebin(),
+                                                          m_vertices->get_collision_radius(),
+                                                          m_vertices->get_collision_phi(),
+                                                          true);
+        add_collision_cross(collision_cross_tpr[side],
+                            m_vertices->get_collision_timebin(),
+                            m_vertices->get_collision_radius(),
+                            m_vertices->get_collision_phi(),
+                            false);
+        add_collision_cross(collision_cross_txy[side],
+                            m_vertices->get_collision_timebin(),
+                            m_vertices->get_collision_radius(),
+                            m_vertices->get_collision_phi(),
+                            true);
+      }
+    }
+  }
 
   for (unsigned int side = 0; side < 2; ++side)
   {
@@ -520,13 +654,25 @@ int FullTrackDisplay::process_event(PHCompositeNode* topNode)
       }
     }
 
-    add_fit_lines(fit_lines_tpr[side], fit, track_color(itrk), false);
-    add_fit_lines(fit_lines_txy[side], fit, track_color(itrk), true);
+    const int color = track_color(itrk);
+    add_fit_lines(fit_lines_tpr[side], fit, color, false);
+    add_fit_lines(fit_lines_txy[side], fit, color, true);
+
+    auto vertex_iter = vertices_by_track_id.find(trk->get_track_id());
+    if (vertex_iter != vertices_by_track_id.end())
+    {
+      const FullTrackVertex* vtx = vertex_iter->second;
+      if (vtx && is_good_number(vtx->get_d0()) && is_good_number(vtx->get_timebin0()))
+      {
+        vertex_points_tpr[side].push_back(make_vertex_marker(vtx->get_timebin0(), vtx->get_d0(), color, false));
+        vertex_points_txy[side].push_back(make_vertex_marker(vtx->get_timebin0(), vtx->get_d0(), color, true));
+      }
+    }
 
     if (single_module_track)
     {
-      add_fit_lines(fit_lines_tpr_single[side], fit, track_color(itrk), false);
-      add_fit_lines(fit_lines_txy_single[side], fit, track_color(itrk), true);
+      add_fit_lines(fit_lines_tpr_single[side], fit, color, false);
+      add_fit_lines(fit_lines_txy_single[side], fit, color, true);
     }
   }
 
@@ -540,6 +686,15 @@ int FullTrackDisplay::process_event(PHCompositeNode* topNode)
     {
       if (fit_lines_tpr[side][iline]) fit_lines_tpr[side][iline]->Draw("same");
     }
+    for (unsigned int ipoint = 0; ipoint < vertex_points_tpr[side].size(); ++ipoint)
+    {
+      if (vertex_points_tpr[side][ipoint]) vertex_points_tpr[side][ipoint]->Draw("same");
+    }
+    for (unsigned int icross = 0; icross < collision_cross_tpr[side].size(); ++icross)
+    {
+      if (collision_cross_tpr[side][icross]) collision_cross_tpr[side][icross]->Draw("same");
+    }
+    if (collision_point_tpr[side]) collision_point_tpr[side]->Draw("same");
     c3->Modified();
     c3->Update();
     c3->Write();
@@ -552,6 +707,15 @@ int FullTrackDisplay::process_event(PHCompositeNode* topNode)
     {
       if (fit_lines_txy[side][iline]) fit_lines_txy[side][iline]->Draw("same");
     }
+    for (unsigned int ipoint = 0; ipoint < vertex_points_txy[side].size(); ++ipoint)
+    {
+      if (vertex_points_txy[side][ipoint]) vertex_points_txy[side][ipoint]->Draw("same");
+    }
+    for (unsigned int icross = 0; icross < collision_cross_txy[side].size(); ++icross)
+    {
+      if (collision_cross_txy[side][icross]) collision_cross_txy[side][icross]->Draw("same");
+    }
+    if (collision_point_txy[side]) collision_point_txy[side]->Draw("same");
     c3xy->Modified();
     c3xy->Update();
     c3xy->Write();
@@ -608,6 +772,7 @@ int FullTrackDisplay::End(PHCompositeNode*)
 bool FullTrackDisplay::get_nodes(PHCompositeNode* topNode)
 {
   m_hits = findNode::getClass<TrkrHitSetContainer>(topNode, "TRKR_HITSET");
+  m_vertices = findNode::getClass<FullTrackVertexContainer>(topNode, "FULLTRACKVERTICES");
   m_tracks = findNode::getClass<FullTrackContainer>(topNode, m_trackNodeName.c_str());
 
   if (!m_tracks)

@@ -9,6 +9,7 @@
 class PHCompositeNode;
 class TFile;
 class FullTrackContainer;
+class FullTrackVertexContainer;
 class TrkrHitSetContainer;
 class IdealPadMap;
 
@@ -112,6 +113,7 @@ class FullTrackDisplay : public SubsysReco
   TFile* m_outfile;
   FullTrackContainer* m_tracks;
   TrkrHitSetContainer* m_hits;
+  FullTrackVertexContainer* m_vertices;
   IdealPadMap* m_idealPadMap;
   int m_fitMode;
   double m_fitWeightPower;
