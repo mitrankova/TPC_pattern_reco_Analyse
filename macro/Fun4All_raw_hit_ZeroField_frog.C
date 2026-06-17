@@ -283,7 +283,8 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
 
   se->registerSubsystem( new InModuleTracks());
   se->registerSubsystem( new FullTrackConnector());
-  se->registerSubsystem( new TpcPolyTrackReco());
+  //se->registerSubsystem( new FullTrackVertexer());
+ // se->registerSubsystem( new TpcPolyTrackReco());
 
   //se->registerSubsystem(new TpcPadMapBuilder("TpcPadMapBuilder", "TPC_PADMAP"));
 
@@ -293,7 +294,7 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
   //  se->registerSubsystem(imt);
 
 
-  // se->registerSubsystem( new FullTrackDisplay( "FullTrackDisplay", "full_track_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
+//   se->registerSubsystem( new FullTrackDisplay( "FullTrackDisplay", "full_track_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
 
   // auto display = new FullTrackDisplay( "FullTrackDisplay", "34_full_track_display_"+outfilename+"_" + to_string(runnumber) + ".root" );
    //display->setPlotNModulesRange(1, 2);
@@ -306,19 +307,18 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
 
 
 //se->registerSubsystem( new TpcPolyTrackDisplay( "TpcPolyTrackDisplay", "tpc_poly_track_display_"+outfilename+"_" + to_string(runnumber) + ".root",  "TPCPOLYTRACKS", 2));
-    auto display = new TpcPolyTrackDisplay( "TpcPolyTrackDisplay", "tpc_poly_track_display_"+outfilename+"_" + to_string(runnumber) + ".root",  "TPCPOLYTRACKS", 2);
+  
+  
+auto poly = new TpcPolyTrackReco();
+poly->Verbosity(10);
+se->registerSubsystem(poly);
+
+   /* auto display = new TpcPolyTrackDisplay( "TpcPolyTrackDisplay", "tpc_poly_track_display_"+outfilename+"_" + to_string(runnumber) + ".root",  "TPCPOLYTRACKS", 2);
     display->setHighPtMin(0.5);
     display->setHighPtMaxAbsD0(1.0);
     se->registerSubsystem(display);
-/*
-auto poly = new TpcPolyTrackReco();
-poly->setInputNodeName("FULLTRACKS");
-poly->setOutputNodeName("TPCPOLYTRACKS");
-poly->setT0(360.0);
-poly->setTpcAdcClock(50.037280);
-poly->setStartZ(-105.5, 105.5); // side 0, side 1
-se->registerSubsystem(poly);
-*/
+    */
+
 /*
     FullTrackConnector* fullconn = new FullTrackConnector("FullTrackConnector", "FullTracks.root");
     fullconn->Verbosity(10);
