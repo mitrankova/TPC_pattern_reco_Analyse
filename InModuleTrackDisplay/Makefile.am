@@ -1,9 +1,11 @@
 AUTOMAKE_OPTIONS = foreign
 
 TPC_PATTERN_RECO_INSTALL = /sphenix/user/mitrankova/F4A/TPC_pattern_reco/install
+TPC_PATTERN_RECO_SOURCE = /sphenix/user/mitrankova/F4A/TPC_pattern_reco
 
 AM_CPPFLAGS = \
   -I$(includedir) \
+  -I$(TPC_PATTERN_RECO_SOURCE) \
   -I$(TPC_PATTERN_RECO_INSTALL)/include \
   -I$(TPC_PATTERN_RECO_INSTALL)/include/inmoduletracks \
   -isystem$(OFFLINE_MAIN)/include \
