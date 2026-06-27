@@ -86,22 +86,23 @@ namespace
     if (!marker) return;
     marker->SetMarkerColor(color);
     marker->SetMarkerStyle(20);
-    marker->SetMarkerSize(1.6);
+    marker->SetMarkerSize(6.0);
   }
 
-  TPolyMarker3D* make_vertex_marker(const double timebin0,
-                                    const double d0,
+  TPolyMarker3D* make_vertex_marker(const double timebin,
+                                    const double radius,
+                                    const double phi,
                                     const int color,
                                     const bool draw_xy)
   {
     TPolyMarker3D* marker = new TPolyMarker3D(1);
     if (draw_xy)
     {
-      marker->SetPoint(0, timebin0, 0.0, 0.0);
+      marker->SetPoint(0, timebin, radius * std::cos(phi), radius * std::sin(phi));
     }
     else
     {
-      marker->SetPoint(0, timebin0, wrap_phi(d0), 0.0);
+      marker->SetPoint(0, timebin, wrap_phi(phi), radius);
     }
     style_vertex_marker_3d(marker, color);
     return marker;
@@ -517,8 +518,8 @@ int FullTrackDisplay::process_event(PHCompositeNode* topNode)
   std::vector<TPolyLine3D*> fit_lines_txy_single[2];
   std::vector<TPolyMarker3D*> vertex_points_tpr[2];
   std::vector<TPolyMarker3D*> vertex_points_txy[2];
-  TPolyMarker3D* collision_point_tpr[2] = {nullptr, nullptr};
-  TPolyMarker3D* collision_point_txy[2] = {nullptr, nullptr};
+  std::vector<TPolyMarker3D*> collision_points_tpr[2];
+  std::vector<TPolyMarker3D*> collision_points_txy[2];
   std::vector<TPolyLine3D*> collision_cross_tpr[2];
   std::vector<TPolyLine3D*> collision_cross_txy[2];
 
@@ -535,31 +536,42 @@ int FullTrackDisplay::process_event(PHCompositeNode* topNode)
       vertices_by_track_id[vtx->get_track_id()] = vtx;
     }
 
-    if (m_vertices->get_collision_vertex_valid() &&
-        is_good_number(m_vertices->get_collision_timebin()) &&
-        is_good_number(m_vertices->get_collision_radius()) &&
-        is_good_number(m_vertices->get_collision_phi()))
+    if (m_vertices->get_collision_vertex_valid())
     {
-      for (unsigned int side = 0; side < 2; ++side)
+      const unsigned int ncollision_vertices = m_vertices->get_collision_vertex_count();
+      for (unsigned int icoll = 0; icoll < ncollision_vertices; ++icoll)
       {
-        collision_point_tpr[side] = make_collision_marker(m_vertices->get_collision_timebin(),
-                                                          m_vertices->get_collision_radius(),
-                                                          m_vertices->get_collision_phi(),
-                                                          false);
-        collision_point_txy[side] = make_collision_marker(m_vertices->get_collision_timebin(),
-                                                          m_vertices->get_collision_radius(),
-                                                          m_vertices->get_collision_phi(),
-                                                          true);
-        add_collision_cross(collision_cross_tpr[side],
-                            m_vertices->get_collision_timebin(),
-                            m_vertices->get_collision_radius(),
-                            m_vertices->get_collision_phi(),
-                            false);
-        add_collision_cross(collision_cross_txy[side],
-                            m_vertices->get_collision_timebin(),
-                            m_vertices->get_collision_radius(),
-                            m_vertices->get_collision_phi(),
-                            true);
+        const double collision_timebin = m_vertices->get_collision_timebin(icoll);
+        const double collision_radius = m_vertices->get_collision_radius(icoll);
+        const double collision_phi = m_vertices->get_collision_phi(icoll);
+        if (!is_good_number(collision_timebin) ||
+            !is_good_number(collision_radius) ||
+            !is_good_number(collision_phi))
+        {
+          continue;
+        }
+
+        for (unsigned int side = 0; side < 2; ++side)
+        {
+          collision_points_tpr[side].push_back(make_collision_marker(collision_timebin,
+                                                                     collision_radius,
+                                                                     collision_phi,
+                                                                     false));
+          collision_points_txy[side].push_back(make_collision_marker(collision_timebin,
+                                                                     collision_radius,
+                                                                     collision_phi,
+                                                                     true));
+          add_collision_cross(collision_cross_tpr[side],
+                              collision_timebin,
+                              collision_radius,
+                              collision_phi,
+                              false);
+          add_collision_cross(collision_cross_txy[side],
+                              collision_timebin,
+                              collision_radius,
+                              collision_phi,
+                              true);
+        }
       }
     }
   }
@@ -662,10 +674,21 @@ int FullTrackDisplay::process_event(PHCompositeNode* topNode)
     if (vertex_iter != vertices_by_track_id.end())
     {
       const FullTrackVertex* vtx = vertex_iter->second;
-      if (vtx && is_good_number(vtx->get_d0()) && is_good_number(vtx->get_timebin0()))
+      if (vtx && vtx->get_pca_valid() &&
+          is_good_number(vtx->get_pca_timebin()) &&
+          is_good_number(vtx->get_pca_radius()) &&
+          is_good_number(vtx->get_pca_phi()))
       {
-        vertex_points_tpr[side].push_back(make_vertex_marker(vtx->get_timebin0(), vtx->get_d0(), color, false));
-        vertex_points_txy[side].push_back(make_vertex_marker(vtx->get_timebin0(), vtx->get_d0(), color, true));
+        vertex_points_tpr[side].push_back(make_vertex_marker(vtx->get_pca_timebin(),
+                                                             vtx->get_pca_radius(),
+                                                             vtx->get_pca_phi(),
+                                                             color,
+                                                             false));
+        vertex_points_txy[side].push_back(make_vertex_marker(vtx->get_pca_timebin(),
+                                                             vtx->get_pca_radius(),
+                                                             vtx->get_pca_phi(),
+                                                             color,
+                                                             true));
       }
     }
 
@@ -694,7 +717,10 @@ int FullTrackDisplay::process_event(PHCompositeNode* topNode)
     {
       if (collision_cross_tpr[side][icross]) collision_cross_tpr[side][icross]->Draw("same");
     }
-    if (collision_point_tpr[side]) collision_point_tpr[side]->Draw("same");
+    for (unsigned int ipoint = 0; ipoint < collision_points_tpr[side].size(); ++ipoint)
+    {
+      if (collision_points_tpr[side][ipoint]) collision_points_tpr[side][ipoint]->Draw("same");
+    }
     c3->Modified();
     c3->Update();
     c3->Write();
@@ -715,7 +741,10 @@ int FullTrackDisplay::process_event(PHCompositeNode* topNode)
     {
       if (collision_cross_txy[side][icross]) collision_cross_txy[side][icross]->Draw("same");
     }
-    if (collision_point_txy[side]) collision_point_txy[side]->Draw("same");
+    for (unsigned int ipoint = 0; ipoint < collision_points_txy[side].size(); ++ipoint)
+    {
+      if (collision_points_txy[side][ipoint]) collision_points_txy[side][ipoint]->Draw("same");
+    }
     c3xy->Modified();
     c3xy->Update();
     c3xy->Write();
