@@ -43,9 +43,11 @@
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/FullTrackConnector.h>
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/TpcPolyTrackReco.h>
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/FullTrackVertexer.h>
+#include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/TpcPolyClusterizer.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/InModuleTrackDisplay.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/FullTrackDisplay.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyTrackDisplay.h>
+#include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyClusterDisplay.h>
 
 
 
@@ -283,9 +285,20 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
 
   se->registerSubsystem( new InModuleTracks());
   se->registerSubsystem( new FullTrackConnector());
-  //se->registerSubsystem( new FullTrackVertexer());
- // se->registerSubsystem( new TpcPolyTrackReco());
-
+  se->registerSubsystem( new FullTrackVertexer());
+  //se->registerSubsystem( new TpcPolyTrackReco());
+    se->registerSubsystem( new TpcPolyClusterizer());
+      se->registerSubsystem( new TpcPolyClusterDisplay());
+/*
+    FullTrackConnector* fullconn = new FullTrackConnector();
+    fullconn->Verbosity(0);
+    se->registerSubsystem(fullconn);
+    */
+    
+    /*FullTrackVertexer* vtx = new FullTrackVertexer();
+    vtx->Verbosity(0);
+    se->registerSubsystem(vtx);
+    */
   //se->registerSubsystem(new TpcPadMapBuilder("TpcPadMapBuilder", "TPC_PADMAP"));
 
   //  se->registerSubsystem( new InModuleTrackDisplay( "InModuleTrackDisplay", "inmodule_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
@@ -293,8 +306,7 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
   //  imt->Verbosity(10);   // or 2, 3, etc.
   //  se->registerSubsystem(imt);
 
-
-//   se->registerSubsystem( new FullTrackDisplay( "FullTrackDisplay", "full_track_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
+   //se->registerSubsystem( new FullTrackDisplay( "FullTrackDisplay", "full_track_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
 
   // auto display = new FullTrackDisplay( "FullTrackDisplay", "34_full_track_display_"+outfilename+"_" + to_string(runnumber) + ".root" );
    //display->setPlotNModulesRange(1, 2);
@@ -308,12 +320,13 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
 
 //se->registerSubsystem( new TpcPolyTrackDisplay( "TpcPolyTrackDisplay", "tpc_poly_track_display_"+outfilename+"_" + to_string(runnumber) + ".root",  "TPCPOLYTRACKS", 2));
   
-  
+/*
 auto poly = new TpcPolyTrackReco();
 poly->Verbosity(10);
 se->registerSubsystem(poly);
-
-   /* auto display = new TpcPolyTrackDisplay( "TpcPolyTrackDisplay", "tpc_poly_track_display_"+outfilename+"_" + to_string(runnumber) + ".root",  "TPCPOLYTRACKS", 2);
+*/
+    /* 
+    auto display = new TpcPolyTrackDisplay( "TpcPolyTrackDisplay", "tpc_poly_track_display_"+outfilename+"_" + to_string(runnumber) + ".root",  "TPCPOLYTRACKS", 2);
     display->setHighPtMin(0.5);
     display->setHighPtMaxAbsD0(1.0);
     se->registerSubsystem(display);
