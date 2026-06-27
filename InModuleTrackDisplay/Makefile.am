@@ -20,7 +20,8 @@ AM_LDFLAGS = \
 pkginclude_HEADERS = \
   InModuleTrackDisplay.h \
   FullTrackDisplay.h \
-  TpcPolyTrackDisplay.h
+  TpcPolyTrackDisplay.h \
+  TpcPolyClusterDisplay.h
 
 lib_LTLIBRARIES = \
   libInModuleTrackDisplay.la
@@ -28,7 +29,8 @@ lib_LTLIBRARIES = \
 libInModuleTrackDisplay_la_SOURCES = \
   InModuleTrackDisplay.cc \
   FullTrackDisplay.cc \
-  TpcPolyTrackDisplay.cc
+  TpcPolyTrackDisplay.cc \
+  TpcPolyClusterDisplay.cc
 
 libInModuleTrackDisplay_la_LIBADD = \
   -lInModuleTracks \
