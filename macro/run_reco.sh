@@ -9,11 +9,11 @@ source /opt/sphenix/core/bin/sphenix_setup.sh new
 #printenv
 
 nEvents="$1"
-runnumber=81000
+runnumber=79513
 segment="$2"
 nSkip="$3"
 
-OutDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/ZeroField/81000
+OutDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/79513
 
 echo ========================================================
 echo Running Fun4All_raw_hit_ZeroField_frog.C  p+p2025Zero field

@@ -44,11 +44,12 @@
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/TpcPolyTrackReco.h>
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/FullTrackVertexer.h>
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/TpcPolyClusterizer.h>
+#include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/FinalTrackVertexer.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/InModuleTrackDisplay.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/FullTrackDisplay.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyTrackDisplay.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyClusterDisplay.h>
-
+#include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyClusterResiduals.h>
 
 
 R__LOAD_LIBRARY(libfun4all.so)
@@ -80,6 +81,7 @@ class SkipFirstN : public SubsysReco {
 
 //xxxxxxxxxxxxxxxxxxxxxxxxxx  .x Fun4All_raw_hit_ZeroField_frog.C(3, 79513, 0, ".", 0, "run3pp", "ana537_nocdbtag_v001","HITS_ppFieldOn")
 //.x Fun4All_raw_hit_ZeroField_frog.C(2, 79513, 0, ".", 0, "run3pp", "ana532_nocdbtag_v001","HITS_ppFieldOn")
+//.x Fun4All_raw_hit_ZeroField_frog.C(2, 79516, 0, ".", 0, "run3pp", "ana532_nocdbtag_v001","HITS_ppFieldOn")
 
 //==========AuAu Zero Field
 // 111x111   75555-75557 - 1mrad; 75557 - 0mrad
@@ -98,12 +100,12 @@ class SkipFirstN : public SubsysReco {
 
 void Fun4All_raw_hit_ZeroField_frog(
     const int nEvents = 10,
-    const int runnumber = 81000,
+    const int runnumber = 79513,
     const int segment = 0,
     const std::string outdir = ".",
     const int nSkip = 0,
     const std::string collision = "run3pp",
-    const std::string production = "ana537_nocdbtag_v001",
+    const std::string production = "ana532_nocdbtag_v001",
     const std::string& outfilename = "HITS_clusters_seeds")
 {
   const bool convertSeeds = true;
@@ -224,7 +226,6 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
   TRACKING::pp_mode = true;
 
 
-
   FlagHandler *flag = new FlagHandler();
   se->registerSubsystem(flag);
 
@@ -234,20 +235,12 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
   ingeo->AddFile(geofile);
   se->registerInputManager(ingeo);
 
-  TpcReadoutInit(runnumber);
-  G4MAGNET::magfield = "0.01"; 
-  G4MAGNET::magfield_tracking = G4MAGNET::magfield; 
-  G4MAGNET::magfield_rescale = 1;
 
+
+  TpcReadoutInit(runnumber);
   G4TPC::REJECT_LASER_EVENTS = true;
-  G4TPC::ENABLE_MODULE_EDGE_CORRECTIONS = false;
   // Flag for running the tpc hit unpacker with zero suppression on
   TRACKING::tpc_zero_supp = true;
-
-  // MVTX
-  Enable::MVTX_APPLYMISALIGNMENT = true;
-  ACTSGEOM::mvtx_applymisalignment = Enable::MVTX_APPLYMISALIGNMENT;
-
 
   TrackingInit();
 
@@ -285,10 +278,17 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
 
   se->registerSubsystem( new InModuleTracks());
   se->registerSubsystem( new FullTrackConnector());
-  se->registerSubsystem( new FullTrackVertexer());
+  //se->registerSubsystem( new FullTrackVertexer());
   //se->registerSubsystem( new TpcPolyTrackReco());
-    se->registerSubsystem( new TpcPolyClusterizer());
-      se->registerSubsystem( new TpcPolyClusterDisplay());
+   se->registerSubsystem( new TpcPolyClusterizer());
+   se->registerSubsystem( new FinalTrackVertexer());
+ //  se->registerSubsystem( new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_poly_cluster_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
+      auto resid = new TpcPolyClusterResiduals("TpcPolyClusterResiduals",
+                                         "tpc_poly_cluster_residuals"+outfilename+"_" + to_string(runnumber) + ".root" );
+resid->setMinPt(0.2);
+resid->setMinTpcClusters(20);
+se->registerSubsystem(resid);
+
 /*
     FullTrackConnector* fullconn = new FullTrackConnector();
     fullconn->Verbosity(0);
@@ -352,8 +352,11 @@ se->registerSubsystem(poly);
   out->AddNode("Sync");
   out->AddNode("EventHeader");
   out->AddNode("TRKR_HITSET");
-  out->AddNode("INMODULETRACKS");
+  //out->AddNode("INMODULETRACKS");
   out->AddRunNode("TPCGEOMCONTAINER");
+  out->AddNode("FULLTRACKS");
+  out->AddNode("TPCPOLYCLUSTERTRACKS");
+  out->AddNode("FINALTRACKS");
 
   //se->registerOutputManager(out);
   
