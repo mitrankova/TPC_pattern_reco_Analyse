@@ -6,6 +6,8 @@
 #include <string>
 
 class PHCompositeNode;
+class FinalTrackContainer;
+class FinalTrackVertexContainer;
 class TFile;
 class TpcPolyClusterTrackContainer;
 
@@ -23,6 +25,9 @@ class TpcPolyClusterDisplay : public SubsysReco
   int End(PHCompositeNode*) override;
 
   void setClusterNodeName(const std::string& n) { m_clusterNodeName = n; }
+  void setFinalTrackNodeName(const std::string& n) { m_finalTrackNodeName = n; }
+  void setFinalTrackVertexNodeName(const std::string& n) { m_finalTrackVertexNodeName = n; }
+  void setMagneticFieldTesla(double b) { m_magneticFieldTesla = b; }
   void setZRange(double zmin, double zmax) { m_zmin = zmin; m_zmax = zmax; }
   void setXYRange(double xymax) { m_xymax = xymax; }
 
@@ -31,15 +36,20 @@ class TpcPolyClusterDisplay : public SubsysReco
 
   std::string m_outfilename;
   std::string m_clusterNodeName;
+  std::string m_finalTrackNodeName;
+  std::string m_finalTrackVertexNodeName;
   unsigned int m_maxEventDisplays;
   unsigned int m_evt;
   unsigned int m_eventsSaved;
   double m_zmin;
   double m_zmax;
   double m_xymax;
+  double m_magneticFieldTesla;
 
   TFile* m_outfile;
   TpcPolyClusterTrackContainer* m_clusterTracks;
+  FinalTrackContainer* m_finalTracks;
+  FinalTrackVertexContainer* m_finalTrackVertices;
 };
 
 #endif
