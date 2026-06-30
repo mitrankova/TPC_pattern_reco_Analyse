@@ -21,7 +21,8 @@ pkginclude_HEADERS = \
   InModuleTrackDisplay.h \
   FullTrackDisplay.h \
   TpcPolyTrackDisplay.h \
-  TpcPolyClusterDisplay.h
+  TpcPolyClusterDisplay.h \
+  TpcPolyClusterResiduals.h
 
 lib_LTLIBRARIES = \
   libInModuleTrackDisplay.la
@@ -30,7 +31,8 @@ libInModuleTrackDisplay_la_SOURCES = \
   InModuleTrackDisplay.cc \
   FullTrackDisplay.cc \
   TpcPolyTrackDisplay.cc \
-  TpcPolyClusterDisplay.cc
+  TpcPolyClusterDisplay.cc \
+  TpcPolyClusterResiduals.cc
 
 libInModuleTrackDisplay_la_LIBADD = \
   -lInModuleTracks \

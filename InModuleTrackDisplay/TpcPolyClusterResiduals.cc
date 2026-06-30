@@ -1,0 +1,435 @@
+#include "TpcPolyClusterResiduals.h"
+
+#include "FinalTrack.h"
+#include "FinalTrackContainer.h"
+#include "FinalTrackVertexContainer.h"
+#include "TpcPolyClusterTrack.h"
+#include "TpcPolyClusterTrackContainer.h"
+
+#include <fun4all/Fun4AllReturnCodes.h>
+#include <phool/PHCompositeNode.h>
+#include <phool/getClass.h>
+
+#include <TFile.h>
+#include <TTree.h>
+
+#include <algorithm>
+#include <cmath>
+#include <iostream>
+#include <limits>
+#include <map>
+
+namespace
+{
+  double wrap_phi(double phi)
+  {
+    const double pi = std::acos(-1.0);
+    while (phi > pi) phi -= 2.0 * pi;
+    while (phi <= -pi) phi += 2.0 * pi;
+    return phi;
+  }
+
+  struct HelixCircle
+  {
+    bool ok {false};
+    double xc {0.0};
+    double yc {0.0};
+    double radius {0.0};
+    double sign {0.0};
+    double phi0 {0.0};
+    double z0 {0.0};
+    double dzds {0.0};
+  };
+
+  HelixCircle make_track_circle(const FinalTrack* trk,
+                                const double magnetic_field_tesla)
+  {
+    HelixCircle circle;
+    if (!trk || trk->get_fit_status() == 0) return circle;
+
+    const double x = trk->get_x();
+    const double y = trk->get_y();
+    const double z = trk->get_z();
+    const double px = trk->get_px();
+    const double py = trk->get_py();
+    const double pz = trk->get_pz();
+    const double charge = trk->get_charge();
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z) ||
+        !std::isfinite(px) || !std::isfinite(py) || !std::isfinite(pz) ||
+        !std::isfinite(charge))
+    {
+      return circle;
+    }
+
+    const double pt = std::hypot(px, py);
+    if (pt <= 0.0 || std::fabs(charge * magnetic_field_tesla) < 1.0e-12) return circle;
+
+    const double signed_radius = pt / (0.003 * charge * magnetic_field_tesla);
+    circle.radius = std::fabs(signed_radius);
+    if (circle.radius <= 0.0 || !std::isfinite(circle.radius)) return circle;
+
+    const double tx = px / pt;
+    const double ty = py / pt;
+    circle.sign = signed_radius > 0.0 ? 1.0 : -1.0;
+    circle.xc = x + circle.sign * circle.radius * ty;
+    circle.yc = y - circle.sign * circle.radius * tx;
+    circle.phi0 = std::atan2(y - circle.yc, x - circle.xc);
+    circle.z0 = z;
+    circle.dzds = pz / pt;
+    circle.ok = std::isfinite(circle.xc) && std::isfinite(circle.yc) &&
+                std::isfinite(circle.phi0) && std::isfinite(circle.z0) &&
+                std::isfinite(circle.dzds);
+    return circle;
+  }
+
+  bool helix_z_at_dca_to_vertex(const HelixCircle& circle,
+                                const double vertex_x,
+                                const double vertex_y,
+                                double& z_at_dca)
+  {
+    if (!circle.ok) return false;
+
+    const double dx = vertex_x - circle.xc;
+    const double dy = vertex_y - circle.yc;
+    const double dc = std::hypot(dx, dy);
+    if (!std::isfinite(dc) || dc <= 1.0e-12) return false;
+
+    const double pca_x = circle.xc + circle.radius * dx / dc;
+    const double pca_y = circle.yc + circle.radius * dy / dc;
+    const double pca_phi_on_circle = std::atan2(pca_y - circle.yc, pca_x - circle.xc);
+
+    double best_arc = 0.0;
+    double best_abs_arc = std::numeric_limits<double>::max();
+    const double pi = std::acos(-1.0);
+    for (int k = -4; k <= 4; ++k)
+    {
+      const double dphi = pca_phi_on_circle - circle.phi0 + 2.0 * pi * static_cast<double>(k);
+      const double arc = -circle.sign * circle.radius * dphi;
+      const double abs_arc = std::fabs(arc);
+      if (abs_arc < best_abs_arc)
+      {
+        best_abs_arc = abs_arc;
+        best_arc = arc;
+      }
+    }
+
+    z_at_dca = circle.z0 + circle.dzds * best_arc;
+    return std::isfinite(z_at_dca);
+  }
+
+  bool choose_collision_vertex(const FinalTrackVertexContainer* vertices,
+                               const HelixCircle& circle,
+                               double& vertex_x,
+                               double& vertex_y,
+                               double& vertex_z)
+  {
+    if (!vertices || !vertices->get_collision_vertex_valid() || !circle.ok) return false;
+
+    double best_dz = std::numeric_limits<double>::max();
+    const unsigned int nvertices = vertices->get_collision_vertex_count();
+    for (unsigned int ivtx = 0; ivtx < nvertices; ++ivtx)
+    {
+      const double x = vertices->get_collision_x(ivtx);
+      const double y = vertices->get_collision_y(ivtx);
+      const double z = vertices->get_collision_z(ivtx);
+      if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) continue;
+
+      double z_at_dca = 0.0;
+      if (!helix_z_at_dca_to_vertex(circle, x, y, z_at_dca)) continue;
+
+      const double dz = std::fabs(z - z_at_dca);
+      if (dz < best_dz)
+      {
+        best_dz = dz;
+        vertex_x = x;
+        vertex_y = y;
+        vertex_z = z;
+      }
+    }
+
+    return best_dz != std::numeric_limits<double>::max();
+  }
+
+  bool project_track_to_z(const FinalTrack* trk,
+                          const double z,
+                          const double magnetic_field_tesla,
+                          double& x_state,
+                          double& y_state)
+  {
+    if (!trk || trk->get_fit_status() == 0) return false;
+
+    const double x0 = trk->get_x();
+    const double y0 = trk->get_y();
+    const double z0 = trk->get_z();
+    const double px = trk->get_px();
+    const double py = trk->get_py();
+    const double pz = trk->get_pz();
+    const double charge = trk->get_charge();
+
+    if (!std::isfinite(x0) || !std::isfinite(y0) || !std::isfinite(z0) ||
+        !std::isfinite(px) || !std::isfinite(py) || !std::isfinite(pz) ||
+        !std::isfinite(z))
+    {
+      return false;
+    }
+
+    const double pt = std::hypot(px, py);
+    if (pt <= 0.0 || std::fabs(pz) < 1.0e-12) return false;
+
+    if (std::fabs(charge * magnetic_field_tesla) < 1.0e-12)
+    {
+      const double dz = z - z0;
+      x_state = x0 + px / pz * dz;
+      y_state = y0 + py / pz * dz;
+      return std::isfinite(x_state) && std::isfinite(y_state);
+    }
+
+    const double signed_radius = pt / (0.003 * charge * magnetic_field_tesla);
+    const double radius = std::fabs(signed_radius);
+    if (radius <= 0.0 || !std::isfinite(radius)) return false;
+
+    const double tx = px / pt;
+    const double ty = py / pt;
+    const double sign = signed_radius > 0.0 ? 1.0 : -1.0;
+    const double xc = x0 + sign * radius * ty;
+    const double yc = y0 - sign * radius * tx;
+    const double phi0 = std::atan2(y0 - yc, x0 - xc);
+    const double dzds = pz / pt;
+    if (std::fabs(dzds) < 1.0e-12) return false;
+
+    const double arc = (z - z0) / dzds;
+    const double phi = phi0 - sign * arc / radius;
+    x_state = xc + radius * std::cos(phi);
+    y_state = yc + radius * std::sin(phi);
+    return std::isfinite(x_state) && std::isfinite(y_state);
+  }
+}
+
+TpcPolyClusterResiduals::TpcPolyClusterResiduals(const std::string& name,
+                                                 const std::string& outfilename)
+  : SubsysReco(name)
+  , m_outfilename(outfilename)
+  , m_clusterNodeName("TPCPOLYCLUSTERTRACKS")
+  , m_finalTrackNodeName("FINALTRACKS")
+  , m_finalTrackVertexNodeName("FINALTRACKVERTICES")
+{
+}
+
+TpcPolyClusterResiduals::~TpcPolyClusterResiduals()
+{
+  if (m_outfile)
+  {
+    delete m_outfile;
+    m_outfile = nullptr;
+  }
+}
+
+int TpcPolyClusterResiduals::Init(PHCompositeNode*)
+{
+  m_outfile = new TFile(m_outfilename.c_str(), "RECREATE");
+  if (!m_outfile || m_outfile->IsZombie())
+  {
+    std::cerr << Name() << "::Init - cannot open output file " << m_outfilename << std::endl;
+    return Fun4AllReturnCodes::ABORTRUN;
+  }
+
+  m_tree = new TTree("residuals", "TPC poly cluster r-phi residuals");
+  m_tree->Branch("event", &m_event, "event/i");
+  m_tree->Branch("final_track_id", &m_finalTrackId, "final_track_id/i");
+  m_tree->Branch("cluster_track_id", &m_clusterTrackId, "cluster_track_id/i");
+  m_tree->Branch("source_full_track_id", &m_sourceFullTrackId, "source_full_track_id/i");
+  m_tree->Branch("cluster_index", &m_clusterIndex, "cluster_index/i");
+  m_tree->Branch("layer", &m_layer, "layer/i");
+  m_tree->Branch("ntpc_clusters", &m_ntpcClusters, "ntpc_clusters/i");
+  m_tree->Branch("fit_status", &m_fitStatus, "fit_status/I");
+  m_tree->Branch("pt", &m_pt, "pt/D");
+  m_tree->Branch("charge", &m_charge, "charge/D");
+  m_tree->Branch("chi2", &m_chi2, "chi2/D");
+  m_tree->Branch("ndf", &m_ndf, "ndf/D");
+  m_tree->Branch("vertex_x", &m_vertexX, "vertex_x/D");
+  m_tree->Branch("vertex_y", &m_vertexY, "vertex_y/D");
+  m_tree->Branch("vertex_z", &m_vertexZ, "vertex_z/D");
+  m_tree->Branch("rDCA", &m_rDCA, "rDCA/D");
+  m_tree->Branch("cluster_x", &m_clusterX, "cluster_x/D");
+  m_tree->Branch("cluster_y", &m_clusterY, "cluster_y/D");
+  m_tree->Branch("cluster_z", &m_clusterZ, "cluster_z/D");
+  m_tree->Branch("cluster_r", &m_clusterR, "cluster_r/D");
+  m_tree->Branch("cluster_phi", &m_clusterPhi, "cluster_phi/D");
+  m_tree->Branch("state_x", &m_stateX, "state_x/D");
+  m_tree->Branch("state_y", &m_stateY, "state_y/D");
+  m_tree->Branch("state_z", &m_stateZ, "state_z/D");
+  m_tree->Branch("state_r", &m_stateR, "state_r/D");
+  m_tree->Branch("state_phi", &m_statePhi, "state_phi/D");
+  m_tree->Branch("delta_phi", &m_deltaPhi, "delta_phi/D");
+  m_tree->Branch("residual_rphi", &m_residualRPhi, "residual_rphi/D");
+
+  return Fun4AllReturnCodes::EVENT_OK;
+}
+
+bool TpcPolyClusterResiduals::get_nodes(PHCompositeNode* topNode)
+{
+  m_clusterTracks = findNode::getClass<TpcPolyClusterTrackContainer>(topNode, m_clusterNodeName.c_str());
+  if (!m_clusterTracks)
+  {
+    std::cerr << Name() << " - missing " << m_clusterNodeName << std::endl;
+    return false;
+  }
+
+  m_finalTracks = findNode::getClass<FinalTrackContainer>(topNode, m_finalTrackNodeName.c_str());
+  if (!m_finalTracks)
+  {
+    std::cerr << Name() << " - missing " << m_finalTrackNodeName << std::endl;
+    return false;
+  }
+
+  m_finalTrackVertices = findNode::getClass<FinalTrackVertexContainer>(topNode, m_finalTrackVertexNodeName.c_str());
+  if (!m_finalTrackVertices && Verbosity() > 0)
+  {
+    std::cerr << Name() << " - missing " << m_finalTrackVertexNodeName
+              << ", rdca will be NaN" << std::endl;
+  }
+
+  return true;
+}
+
+void TpcPolyClusterResiduals::reset_tree_values()
+{
+  m_event = m_evt;
+  m_finalTrackId = 0;
+  m_clusterTrackId = 0;
+  m_sourceFullTrackId = 0;
+  m_clusterIndex = 0;
+  m_layer = 0;
+  m_ntpcClusters = 0;
+  m_fitStatus = 0;
+  m_pt = 0.0;
+  m_charge = 0.0;
+  m_chi2 = 0.0;
+  m_ndf = 0.0;
+  m_vertexX = std::numeric_limits<double>::quiet_NaN();
+  m_vertexY = std::numeric_limits<double>::quiet_NaN();
+  m_vertexZ = std::numeric_limits<double>::quiet_NaN();
+  m_rDCA = std::numeric_limits<double>::quiet_NaN();
+  m_clusterX = 0.0;
+  m_clusterY = 0.0;
+  m_clusterZ = 0.0;
+  m_clusterR = 0.0;
+  m_clusterPhi = 0.0;
+  m_stateX = 0.0;
+  m_stateY = 0.0;
+  m_stateZ = 0.0;
+  m_stateR = 0.0;
+  m_statePhi = 0.0;
+  m_deltaPhi = 0.0;
+  m_residualRPhi = 0.0;
+}
+
+int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
+{
+  ++m_evt;
+  if (!get_nodes(topNode)) return Fun4AllReturnCodes::EVENT_OK;
+  if (!m_tree) return Fun4AllReturnCodes::EVENT_OK;
+
+  std::map<unsigned int, const TpcPolyClusterTrack*> cluster_tracks_by_full_track_id;
+  for (unsigned int itrack = 0; itrack < m_clusterTracks->size(); ++itrack)
+  {
+    const TpcPolyClusterTrack* trk = m_clusterTracks->get_track(itrack);
+    if (!trk || !trk->isValid()) continue;
+    cluster_tracks_by_full_track_id[trk->get_source_full_track_id()] = trk;
+  }
+
+  unsigned int nfilled = 0;
+  const unsigned int nfinal_tracks = m_finalTracks->size();
+  for (unsigned int ifinal = 0; ifinal < nfinal_tracks; ++ifinal)
+  {
+    const FinalTrack* final_track = m_finalTracks->get_track(ifinal);
+    if (!final_track || !final_track->isValid()) continue;
+
+    const double pt = std::hypot(final_track->get_px(), final_track->get_py());
+    if (!std::isfinite(pt) || pt < m_minPt || pt > m_maxPt) continue;
+
+    const auto cluster_iter = cluster_tracks_by_full_track_id.find(final_track->get_source_full_track_id());
+    if (cluster_iter == cluster_tracks_by_full_track_id.end()) continue;
+
+    const TpcPolyClusterTrack* cluster_track = cluster_iter->second;
+    const unsigned int ntpc_clusters = cluster_track->size_clusters();
+    if (ntpc_clusters < m_minTpcClusters || ntpc_clusters > m_maxTpcClusters) continue;
+
+    double vertex_x = std::numeric_limits<double>::quiet_NaN();
+    double vertex_y = std::numeric_limits<double>::quiet_NaN();
+    double vertex_z = std::numeric_limits<double>::quiet_NaN();
+    double rdca = std::numeric_limits<double>::quiet_NaN();
+    const HelixCircle circle = make_track_circle(final_track, m_magneticFieldTesla);
+    if (choose_collision_vertex(m_finalTrackVertices, circle, vertex_x, vertex_y, vertex_z))
+    {
+      rdca = std::hypot(circle.xc - vertex_x, circle.yc - vertex_y) - circle.radius;
+    }
+
+    for (unsigned int icluster = 0; icluster < ntpc_clusters; ++icluster)
+    {
+      const double cluster_x = cluster_track->get_cluster_x(icluster);
+      const double cluster_y = cluster_track->get_cluster_y(icluster);
+      const double cluster_z = cluster_track->get_cluster_z(icluster);
+      if (!std::isfinite(cluster_x) || !std::isfinite(cluster_y) || !std::isfinite(cluster_z)) continue;
+
+      double state_x = 0.0;
+      double state_y = 0.0;
+      if (!project_track_to_z(final_track, cluster_z, m_magneticFieldTesla, state_x, state_y)) continue;
+
+      reset_tree_values();
+      m_event = m_evt;
+      m_finalTrackId = final_track->get_track_id();
+      m_clusterTrackId = cluster_track->get_track_id();
+      m_sourceFullTrackId = final_track->get_source_full_track_id();
+      m_clusterIndex = icluster;
+      m_layer = cluster_track->get_cluster_layer(icluster);
+      m_ntpcClusters = ntpc_clusters;
+      m_fitStatus = final_track->get_fit_status();
+      m_pt = pt;
+      m_charge = final_track->get_charge();
+      m_chi2 = final_track->get_chi2();
+      m_ndf = final_track->get_ndf();
+      m_vertexX = vertex_x;
+      m_vertexY = vertex_y;
+      m_vertexZ = vertex_z;
+      m_rDCA = rdca;
+      m_clusterX = cluster_x;
+      m_clusterY = cluster_y;
+      m_clusterZ = cluster_z;
+      m_clusterR = std::hypot(cluster_x, cluster_y);
+      m_clusterPhi = std::atan2(cluster_y, cluster_x);
+      m_stateX = state_x;
+      m_stateY = state_y;
+      m_stateZ = cluster_z;
+      m_stateR = std::hypot(state_x, state_y);
+      m_statePhi = std::atan2(state_y, state_x);
+      m_deltaPhi = wrap_phi(m_clusterPhi - m_statePhi);
+      m_residualRPhi = m_clusterR * m_deltaPhi;
+      m_tree->Fill();
+      ++nfilled;
+    }
+  }
+
+  if (Verbosity() > 0)
+  {
+    std::cout << Name() << "::process_event - event " << m_evt
+              << " final_tracks=" << nfinal_tracks
+              << " residuals=" << nfilled << std::endl;
+  }
+
+  return Fun4AllReturnCodes::EVENT_OK;
+}
+
+int TpcPolyClusterResiduals::End(PHCompositeNode*)
+{
+  if (m_outfile)
+  {
+    m_outfile->cd();
+    if (m_tree) m_tree->Write();
+    m_outfile->Close();
+    delete m_outfile;
+    m_outfile = nullptr;
+    m_tree = nullptr;
+  }
+  return Fun4AllReturnCodes::EVENT_OK;
+}
