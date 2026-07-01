@@ -44,14 +44,15 @@
 //#include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/TpcPolyTrackReco.h>
 //#include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/FullTrackVertexer.h>
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/TpcPolyClusterizer.h>
-//#include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/FinalTrackVertexer.h>
+#include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/FinalTrackVertexer.h>
 /*
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/InModuleTrackDisplay.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/FullTrackDisplay.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyTrackDisplay.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyClusterDisplay.h>
-#include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyClusterResiduals.h>
 */
+#include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyClusterResiduals.h>
+
 
 R__LOAD_LIBRARY(libfun4all.so)
 R__LOAD_LIBRARY(libffamodules.so)
@@ -62,7 +63,7 @@ R__LOAD_LIBRARY(libintt.so)
 R__LOAD_LIBRARY(libtpc.so)
 R__LOAD_LIBRARY(libmicromegas.so)
 R__LOAD_LIBRARY(/sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/lib/libInModuleTracks.so)
-//R__LOAD_LIBRARY(/sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/lib/libInModuleTrackDisplay.so)
+R__LOAD_LIBRARY(/sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/lib/libInModuleTrackDisplay.so)
 
 
 class SkipFirstN : public SubsysReco {
@@ -284,14 +285,14 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
   //se->registerSubsystem( new FullTrackVertexer());
   //se->registerSubsystem( new TpcPolyTrackReco());
    se->registerSubsystem( new TpcPolyClusterizer());
- //  se->registerSubsystem( new FinalTrackVertexer());
+   se->registerSubsystem( new FinalTrackVertexer());
  //  se->registerSubsystem( new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_poly_cluster_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
-   /*   auto resid = new TpcPolyClusterResiduals("TpcPolyClusterResiduals",
+    auto resid = new TpcPolyClusterResiduals("TpcPolyClusterResiduals",
                                          outdir+"/outout_resid/tpc_poly_cluster_residuals"+outfilename+"_" + to_string(runnumber) + to_string(segment) + ".root" );
-resid->setMinPt(0.2);
-resid->setMinTpcClusters(20);
-se->registerSubsystem(resid);
-*/
+    resid->setMinPt(0.2);
+    resid->setMinTpcClusters(20);
+    se->registerSubsystem(resid);
+
 /*
     FullTrackConnector* fullconn = new FullTrackConnector();
     fullconn->Verbosity(0);
@@ -362,7 +363,7 @@ se->registerSubsystem(poly);
   out->AddNode("FINALTRACKS");
   out->AddNode("TRKR_CLUSTER");
 
-  se->registerOutputManager(out);
+  //se->registerOutputManager(out);
   
   se->run(nEvents+nSkip);
   se->Print("NODETREE");
