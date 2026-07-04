@@ -98,7 +98,8 @@ namespace
     const double pz = trk->get_pz();
     const double charge = trk->get_charge();
     if (!std::isfinite(x0) || !std::isfinite(y0) || !std::isfinite(z0) ||
-        !std::isfinite(px) || !std::isfinite(py) || !std::isfinite(pz))
+        !std::isfinite(px) || !std::isfinite(py) || !std::isfinite(pz) ||
+        !std::isfinite(charge))
     {
       return nullptr;
     }
@@ -317,6 +318,7 @@ int TpcPolyClusterDisplay::process_event(PHCompositeNode* topNode)
   h3->SetStats(0);
   h3->SetDirectory(nullptr);
 
+  
   std::vector<TPolyMarker3D*> markers;
   std::vector<TPolyMarker3D*> pca_markers;
   std::vector<TPolyMarker3D*> collision_vertex_markers;
@@ -339,8 +341,8 @@ int TpcPolyClusterDisplay::process_event(PHCompositeNode* topNode)
       const double z = trk->get_cluster_z(icluster);
       if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) continue;
       if (z < m_zmin || z > m_zmax) continue;
-
       markers.push_back(make_cluster_marker(z, x, y, cluster_color(itrack)));
+
       ++nclustersPlotted;
     }
   }
