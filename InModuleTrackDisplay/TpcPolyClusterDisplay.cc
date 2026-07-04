@@ -60,10 +60,6 @@ namespace
     for (unsigned int icluster = 0; icluster < trk->size_clusters(); ++icluster)
     {
       update_range(trk->get_cluster_z(icluster));
-      for (unsigned int ihit = 0; ihit < trk->get_cluster_nhits(icluster); ++ihit)
-      {
-        update_range(trk->get_cluster_hit_z(icluster, ihit));
-      }
     }
 
     if (zmin == std::numeric_limits<double>::max() || zmax == -std::numeric_limits<double>::max()) return false;
@@ -81,14 +77,23 @@ namespace
     return zmin < zmax;
   }
 
-  TPolyLine3D* make_final_track_line(const FinalTrack* trk,
-                                     const double zmin,
-                                     const double zmax,
-                                     const double xymax,
-                                     const double magnetic_field_tesla,
-                                     const int color)
+  bool track_vertex_z_selected(const FinalTrackVertex* vtx,
+                               const double vertex_zmin,
+                               const double vertex_zmax)
   {
-    if (!trk || trk->get_fit_status() == 0) return nullptr;
+    if (!vtx) return false;
+    const double z0 = vtx->get_z0();
+    return std::isfinite(z0) && z0 >= vertex_zmin && z0 <= vertex_zmax;
+  }
+
+  bool final_track_xy_at_z(const FinalTrack* trk,
+                           const double z,
+                           const double magnetic_field_tesla,
+                           const double arc_direction,
+                           double& x,
+                           double& y)
+  {
+    if (!trk || trk->get_fit_status() == 0 || !std::isfinite(z)) return false;
 
     const double x0 = trk->get_x();
     const double y0 = trk->get_y();
@@ -101,11 +106,78 @@ namespace
         !std::isfinite(px) || !std::isfinite(py) || !std::isfinite(pz) ||
         !std::isfinite(charge))
     {
-      return nullptr;
+      return false;
     }
 
     const double pt = std::hypot(px, py);
-    if (pt <= 0.0 || std::fabs(pz) < 1.0e-12) return nullptr;
+    if (pt <= 0.0 || std::fabs(pz) < 1.0e-12) return false;
+
+    const double dz = z - z0;
+    if (std::fabs(charge * magnetic_field_tesla) < 1.0e-12)
+    {
+      x = x0 + arc_direction * px / pz * dz;
+      y = y0 + arc_direction * py / pz * dz;
+      return std::isfinite(x) && std::isfinite(y);
+    }
+
+    const double signed_radius = pt / (0.003 * charge * magnetic_field_tesla);
+    const double radius = std::fabs(signed_radius);
+    if (!std::isfinite(radius) || radius <= 0.0) return false;
+
+    const double tx = px / pt;
+    const double ty = py / pt;
+    const double sign = signed_radius > 0.0 ? 1.0 : -1.0;
+    const double xc = x0 + sign * radius * ty;
+    const double yc = y0 - sign * radius * tx;
+    const double phi0 = std::atan2(y0 - yc, x0 - xc);
+    const double dzds = pz / pt;
+    if (std::fabs(dzds) < 1.0e-12) return false;
+
+    const double arc = arc_direction * dz / dzds;
+    const double phi = phi0 - sign * arc / radius;
+    x = xc + radius * std::cos(phi);
+    y = yc + radius * std::sin(phi);
+    return std::isfinite(x) && std::isfinite(y);
+  }
+
+  double cluster_line_residual2(const FinalTrack* final_track,
+                                const TpcPolyClusterTrack* cluster_track,
+                                const double magnetic_field_tesla,
+                                const double arc_direction)
+  {
+    if (!final_track || !cluster_track || !cluster_track->isValid()) return std::numeric_limits<double>::max();
+
+    double sum = 0.0;
+    unsigned int n = 0;
+    for (unsigned int icluster = 0; icluster < cluster_track->size_clusters(); ++icluster)
+    {
+      const double cx = cluster_track->get_cluster_x(icluster);
+      const double cy = cluster_track->get_cluster_y(icluster);
+      const double cz = cluster_track->get_cluster_z(icluster);
+      if (!std::isfinite(cx) || !std::isfinite(cy) || !std::isfinite(cz)) continue;
+
+      double x = 0.0;
+      double y = 0.0;
+      if (!final_track_xy_at_z(final_track, cz, magnetic_field_tesla, arc_direction, x, y)) continue;
+
+      const double dx = x - cx;
+      const double dy = y - cy;
+      sum += dx * dx + dy * dy;
+      ++n;
+    }
+
+    return n > 0 ? sum / static_cast<double>(n) : std::numeric_limits<double>::max();
+  }
+
+  TPolyLine3D* make_final_track_line(const FinalTrack* trk,
+                                     const double zmin,
+                                     const double zmax,
+                                     const double xymax,
+                                     const double magnetic_field_tesla,
+                                     const double arc_direction,
+                                     const int color)
+  {
+    if (!trk || trk->get_fit_status() == 0) return nullptr;
 
     std::vector<double> zs;
     std::vector<double> xs;
@@ -115,55 +187,17 @@ namespace
     xs.reserve(nsteps + 1);
     ys.reserve(nsteps + 1);
 
-    if (std::fabs(charge * magnetic_field_tesla) < 1.0e-12)
+    for (unsigned int istep = 0; istep <= nsteps; ++istep)
     {
-      const double dz_min = zmin - z0;
-      const double dz_max = zmax - z0;
-      for (unsigned int istep = 0; istep <= nsteps; ++istep)
-      {
-        const double f = static_cast<double>(istep) / static_cast<double>(nsteps);
-        const double dz = dz_min + f * (dz_max - dz_min);
-        const double x = x0 + px / pz * dz;
-        const double y = y0 + py / pz * dz;
-        const double z = z0 + dz;
-        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) continue;
-        if (std::fabs(x) > xymax || std::fabs(y) > xymax) continue;
-        zs.push_back(z);
-        xs.push_back(x);
-        ys.push_back(y);
-      }
-    }
-    else
-    {
-      const double signed_radius = pt / (0.003 * charge * magnetic_field_tesla);
-      const double radius = std::fabs(signed_radius);
-      const double tx = px / pt;
-      const double ty = py / pt;
-      const double sign = signed_radius > 0.0 ? 1.0 : -1.0;
-      const double xc = x0 + sign * radius * ty;
-      const double yc = y0 - sign * radius * tx;
-      const double phi0 = std::atan2(y0 - yc, x0 - xc);
-      const double dzds = pz / pt;
-      const double s_min = (zmin - z0) / dzds;
-      const double s_max = (zmax - z0) / dzds;
-      const double s0 = std::min(s_min, s_max);
-      const double s1 = std::max(s_min, s_max);
-
-      for (unsigned int istep = 0; istep <= nsteps; ++istep)
-      {
-        const double f = static_cast<double>(istep) / static_cast<double>(nsteps);
-        const double arc = s0 + f * (s1 - s0);
-        const double phi = phi0 - sign * arc / radius;
-        const double x = xc + radius * std::cos(phi);
-        const double y = yc + radius * std::sin(phi);
-        const double z = z0 + dzds * arc;
-        if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) continue;
-        if (z < zmin || z > zmax) continue;
-        if (std::fabs(x) > xymax || std::fabs(y) > xymax) continue;
-        zs.push_back(z);
-        xs.push_back(x);
-        ys.push_back(y);
-      }
+      const double f = static_cast<double>(istep) / static_cast<double>(nsteps);
+      const double z = zmin + f * (zmax - zmin);
+      double x = 0.0;
+      double y = 0.0;
+      if (!final_track_xy_at_z(trk, z, magnetic_field_tesla, arc_direction, x, y)) continue;
+      if (std::fabs(x) > xymax || std::fabs(y) > xymax) continue;
+      zs.push_back(z);
+      xs.push_back(x);
+      ys.push_back(y);
     }
 
     if (zs.size() < 2) return nullptr;
@@ -244,6 +278,8 @@ TpcPolyClusterDisplay::TpcPolyClusterDisplay(const std::string& name,
   , m_eventsSaved(0)
   , m_zmin(-102.0)
   , m_zmax(102.0)
+  , m_trackVertexZMin(-20.0)
+  , m_trackVertexZMax(20.0)
   , m_xymax(85.0)
   , m_magneticFieldTesla(1.4)
   , m_outfile(nullptr)
@@ -323,7 +359,17 @@ int TpcPolyClusterDisplay::process_event(PHCompositeNode* topNode)
   std::vector<TPolyMarker3D*> pca_markers;
   std::vector<TPolyMarker3D*> collision_vertex_markers;
   std::vector<TPolyLine3D*> lines;
+  std::map<unsigned int, const FinalTrackVertex*> final_track_vertices_by_full_track_id;
   std::map<unsigned int, const TpcPolyClusterTrack*> cluster_tracks_by_full_track_id;
+  const unsigned int nvertices = m_finalTrackVertices ? m_finalTrackVertices->size() : 0;
+  for (unsigned int ivtx = 0; ivtx < nvertices; ++ivtx)
+  {
+    const FinalTrackVertex* vtx = m_finalTrackVertices->get_vertex(ivtx);
+    if (!vtx) continue;
+    final_track_vertices_by_full_track_id[vtx->get_source_full_track_id()] = vtx;
+  }
+
+  const bool applyTrackVertexZRange = m_finalTrackVertices != nullptr;
   const unsigned int ncluster_tracks = m_clusterTracks->size();
   unsigned int nclusters = 0;
   unsigned int nclustersPlotted = 0;
@@ -331,6 +377,13 @@ int TpcPolyClusterDisplay::process_event(PHCompositeNode* topNode)
   {
     const TpcPolyClusterTrack* trk = m_clusterTracks->get_track(itrack);
     if (!trk || !trk->isValid()) continue;
+    const auto vertex_iter = final_track_vertices_by_full_track_id.find(trk->get_source_full_track_id());
+    if (applyTrackVertexZRange &&
+        (vertex_iter == final_track_vertices_by_full_track_id.end() ||
+         !track_vertex_z_selected(vertex_iter->second, m_trackVertexZMin, m_trackVertexZMax)))
+    {
+      continue;
+    }
     cluster_tracks_by_full_track_id[trk->get_source_full_track_id()] = trk;
 
     for (unsigned int icluster = 0; icluster < trk->size_clusters(); ++icluster)
@@ -360,17 +413,21 @@ int TpcPolyClusterDisplay::process_event(PHCompositeNode* topNode)
     double line_zmax = m_zmax;
     if (!cluster_track_z_range(cluster_iter->second, m_zmin, m_zmax, line_zmin, line_zmax)) continue;
 
+    const double forward_residual2 = cluster_line_residual2(trk, cluster_iter->second, m_magneticFieldTesla, 1.0);
+    const double reverse_residual2 = cluster_line_residual2(trk, cluster_iter->second, m_magneticFieldTesla, -1.0);
+    const double arc_direction = forward_residual2 <= reverse_residual2 ? 1.0 : -1.0;
+
     TPolyLine3D* line = make_final_track_line(trk, line_zmin, line_zmax, m_xymax,
-                                               m_magneticFieldTesla,
+                                               m_magneticFieldTesla, arc_direction,
                                                cluster_color(cluster_iter->second->get_track_id()));
     if (line) lines.push_back(line);
   }
 
-  const unsigned int nvertices = m_finalTrackVertices ? m_finalTrackVertices->size() : 0;
   for (unsigned int ivtx = 0; ivtx < nvertices; ++ivtx)
   {
     const FinalTrackVertex* vtx = m_finalTrackVertices->get_vertex(ivtx);
     if (!vtx) continue;
+    if (!track_vertex_z_selected(vtx, m_trackVertexZMin, m_trackVertexZMax)) continue;
 
     int color = cluster_color(vtx->get_track_id());
     const auto cluster_iter = cluster_tracks_by_full_track_id.find(vtx->get_source_full_track_id());

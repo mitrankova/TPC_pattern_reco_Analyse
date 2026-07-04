@@ -29,6 +29,7 @@ class TpcPolyClusterDisplay : public SubsysReco
   void setFinalTrackVertexNodeName(const std::string& n) { m_finalTrackVertexNodeName = n; }
   void setMagneticFieldTesla(double b) { m_magneticFieldTesla = b; }
   void setZRange(double zmin, double zmax) { m_zmin = zmin; m_zmax = zmax; }
+  void setTrackVertexZRange(double zmin, double zmax) { m_trackVertexZMin = zmin; m_trackVertexZMax = zmax; }
   void setXYRange(double xymax) { m_xymax = xymax; }
 
  private:
@@ -43,6 +44,8 @@ class TpcPolyClusterDisplay : public SubsysReco
   unsigned int m_eventsSaved;
   double m_zmin;
   double m_zmax;
+  double m_trackVertexZMin;
+  double m_trackVertexZMax;
   double m_xymax;
   double m_magneticFieldTesla;
 
