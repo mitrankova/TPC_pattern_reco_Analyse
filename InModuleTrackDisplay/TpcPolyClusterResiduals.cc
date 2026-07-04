@@ -9,6 +9,7 @@
 #include <fun4all/Fun4AllReturnCodes.h>
 #include <phool/PHCompositeNode.h>
 #include <phool/getClass.h>
+#include <trackbase/TpcDefs.h>
 
 #include <TFile.h>
 #include <TTree.h>
@@ -150,6 +151,13 @@ namespace
     return best_dz != std::numeric_limits<double>::max();
   }
 
+  unsigned int cluster_sector(const TpcPolyClusterTrack* trk, const unsigned int icluster)
+  {
+    if (!trk || trk->get_cluster_nhits(icluster) == 0) return 0xffffffffu;
+    const TpcPolyClusterTrack::HitIndex hit_index = trk->get_cluster_hit_index(icluster, 0);
+    return TpcDefs::getSectorId(hit_index.first);
+  }
+
   bool project_track_to_z(const FinalTrack* trk,
                           const double z,
                           const double magnetic_field_tesla,
@@ -239,13 +247,18 @@ int TpcPolyClusterResiduals::Init(PHCompositeNode*)
   m_tree->Branch("cluster_track_id", &m_clusterTrackId, "cluster_track_id/i");
   m_tree->Branch("source_full_track_id", &m_sourceFullTrackId, "source_full_track_id/i");
   m_tree->Branch("cluster_index", &m_clusterIndex, "cluster_index/i");
+  m_tree->Branch("side", &m_side, "side/I");
+  m_tree->Branch("sector", &m_sector, "sector/i");
   m_tree->Branch("layer", &m_layer, "layer/i");
   m_tree->Branch("ntpc_clusters", &m_ntpcClusters, "ntpc_clusters/i");
   m_tree->Branch("fit_status", &m_fitStatus, "fit_status/I");
   m_tree->Branch("pt", &m_pt, "pt/D");
+  m_tree->Branch("eta", &m_eta, "eta/D");
+  m_tree->Branch("theta", &m_theta, "theta/D");
   m_tree->Branch("charge", &m_charge, "charge/D");
   m_tree->Branch("chi2", &m_chi2, "chi2/D");
   m_tree->Branch("ndf", &m_ndf, "ndf/D");
+  m_tree->Branch("quality", &m_quality, "quality/D");
   m_tree->Branch("vertex_x", &m_vertexX, "vertex_x/D");
   m_tree->Branch("vertex_y", &m_vertexY, "vertex_y/D");
   m_tree->Branch("vertex_z", &m_vertexZ, "vertex_z/D");
@@ -299,13 +312,18 @@ void TpcPolyClusterResiduals::reset_tree_values()
   m_clusterTrackId = 0;
   m_sourceFullTrackId = 0;
   m_clusterIndex = 0;
+  m_side = 0;
+  m_sector = 0xffffffffu;
   m_layer = 0;
   m_ntpcClusters = 0;
   m_fitStatus = 0;
   m_pt = 0.0;
+  m_eta = std::numeric_limits<double>::quiet_NaN();
+  m_theta = std::numeric_limits<double>::quiet_NaN();
   m_charge = 0.0;
   m_chi2 = 0.0;
   m_ndf = 0.0;
+  m_quality = std::numeric_limits<double>::quiet_NaN();
   m_vertexX = std::numeric_limits<double>::quiet_NaN();
   m_vertexY = std::numeric_limits<double>::quiet_NaN();
   m_vertexZ = std::numeric_limits<double>::quiet_NaN();
@@ -345,8 +363,17 @@ int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
     const FinalTrack* final_track = m_finalTracks->get_track(ifinal);
     if (!final_track || !final_track->isValid()) continue;
 
-    const double pt = std::hypot(final_track->get_px(), final_track->get_py());
+    const double px = final_track->get_px();
+    const double py = final_track->get_py();
+    const double pz = final_track->get_pz();
+    const double pt = std::hypot(px, py);
     if (!std::isfinite(pt) || pt < m_minPt || pt > m_maxPt) continue;
+
+    const double eta = (pt > 0.0 && std::isfinite(pz)) ? std::asinh(pz / pt) : std::numeric_limits<double>::quiet_NaN();
+    const double theta = (pt > 0.0 && std::isfinite(pz)) ? std::atan2(pt, pz) : std::numeric_limits<double>::quiet_NaN();
+    const double chi2 = final_track->get_chi2();
+    const double ndf = final_track->get_ndf();
+    const double quality = (std::isfinite(chi2) && std::isfinite(ndf) && ndf > 0.0) ? chi2 / ndf : std::numeric_limits<double>::quiet_NaN();
 
     const auto cluster_iter = cluster_tracks_by_full_track_id.find(final_track->get_source_full_track_id());
     if (cluster_iter == cluster_tracks_by_full_track_id.end()) continue;
@@ -382,13 +409,18 @@ int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
       m_clusterTrackId = cluster_track->get_track_id();
       m_sourceFullTrackId = final_track->get_source_full_track_id();
       m_clusterIndex = icluster;
+      m_side = cluster_track->get_side();
+      m_sector = cluster_sector(cluster_track, icluster);
       m_layer = cluster_track->get_cluster_layer(icluster);
       m_ntpcClusters = ntpc_clusters;
       m_fitStatus = final_track->get_fit_status();
       m_pt = pt;
+      m_eta = eta;
+      m_theta = theta;
       m_charge = final_track->get_charge();
-      m_chi2 = final_track->get_chi2();
-      m_ndf = final_track->get_ndf();
+      m_chi2 = chi2;
+      m_ndf = ndf;
+      m_quality = quality;
       m_vertexX = vertex_x;
       m_vertexY = vertex_y;
       m_vertexZ = vertex_z;

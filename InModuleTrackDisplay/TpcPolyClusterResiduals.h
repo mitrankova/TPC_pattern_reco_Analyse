@@ -60,13 +60,18 @@ class TpcPolyClusterResiduals : public SubsysReco
   unsigned int m_clusterTrackId {0};
   unsigned int m_sourceFullTrackId {0};
   unsigned int m_clusterIndex {0};
+  int m_side {0};
+  unsigned int m_sector {0};
   unsigned int m_layer {0};
   unsigned int m_ntpcClusters {0};
   int m_fitStatus {0};
   double m_pt {0.0};
+  double m_eta {0.0};
+  double m_theta {0.0};
   double m_charge {0.0};
   double m_chi2 {0.0};
   double m_ndf {0.0};
+  double m_quality {0.0};
   double m_vertexX {0.0};
   double m_vertexY {0.0};
   double m_vertexZ {0.0};
