@@ -76,6 +76,7 @@ class TpcPolyClusterResiduals : public SubsysReco
   double m_vertexY {0.0};
   double m_vertexZ {0.0};
   double m_rDCA {0.0};
+  double m_rDCAZero {0.0};
   double m_clusterX {0.0};
   double m_clusterY {0.0};
   double m_clusterZ {0.0};
@@ -84,10 +85,12 @@ class TpcPolyClusterResiduals : public SubsysReco
   double m_stateX {0.0};
   double m_stateY {0.0};
   double m_stateZ {0.0};
+  double m_stateZDca {0.0};
   double m_stateR {0.0};
   double m_statePhi {0.0};
   double m_deltaPhi {0.0};
   double m_residualRPhi {0.0};
+  double m_residualZ {0.0};
 };
 
 #endif
