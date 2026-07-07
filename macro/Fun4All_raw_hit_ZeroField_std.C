@@ -87,7 +87,7 @@ class SkipFirstN : public SubsysReco {
 };
 
 void Fun4All_raw_hit_ZeroField_std(
-    const int nEvents = 10,
+    const int nEvents = 2,
     const std::string& filelist = "/sphenix/user/mitrankova/pp2025/ZeroField/macro/filelists_81000/filelist_00081000_00000.list",
     const std::string outdir = "./",
     const int nSkip = 0,
@@ -149,7 +149,7 @@ void Fun4All_raw_hit_ZeroField_std(
             << " vdrift: " << G4TPC::tpc_drift_velocity_reco
             << std::endl;
 
-  TRACKING::pp_mode = true;
+  TRACKING::streaming_mode = true;
 
   // distortion calibration mode
   /*
@@ -180,8 +180,8 @@ void Fun4All_raw_hit_ZeroField_std(
   se->registerInputManager(ingeo);
 
   TpcReadoutInit(runnumber);
-  G4MAGNET::magfield = "0.01"; 
-  G4MAGNET::magfield_tracking = G4MAGNET::magfield; 
+  //G4MAGNET::magfield = "0.01"; 
+  //G4MAGNET::magfield_tracking = G4MAGNET::magfield; 
   G4MAGNET::magfield_rescale = 1;
 
   G4TPC::REJECT_LASER_EVENTS = true;
@@ -270,13 +270,13 @@ void Fun4All_raw_hit_ZeroField_std(
   silicon_match->window_deta.set_QoverpT_maxabs({0.06,0,0});
   silicon_match->window_dphi.set_QoverpT_maxabs({0.11,0,0});
   silicon_match->set_test_windows_printout(false);
-  silicon_match->set_pp_mode(TRACKING::pp_mode);
+  silicon_match->set_streaming_mode(TRACKING::streaming_mode);
   silicon_match->zeroField(true);
   se->registerSubsystem(silicon_match);
 
   auto mm_match = new PHMicromegasTpcTrackMatching;
   mm_match->Verbosity(0);
-  mm_match->set_pp_mode(TRACKING::pp_mode);
+  mm_match->set_streaming_mode(TRACKING::streaming_mode);
   mm_match->set_rphi_search_window_lyr1(6.);
   mm_match->set_rphi_search_window_lyr2(15.0);
   mm_match->set_z_search_window_lyr1(30.0);
@@ -316,7 +316,7 @@ void Fun4All_raw_hit_ZeroField_std(
     // in calibration mode, fit only Silicons and Micromegas hits
     actsFit->fitSiliconMMs(G4TRACKING::SC_CALIBMODE);
     actsFit->setUseMicromegas(G4TRACKING::SC_USE_MICROMEGAS);
-    actsFit->set_pp_mode(TRACKING::pp_mode);
+    actsFit->set_streaming_mode(TRACKING::streaming_mode);
     actsFit->set_use_clustermover(true);  // default is true for now
     actsFit->useActsEvaluator(false);
     actsFit->useOutlierFinder(false);
@@ -325,7 +325,7 @@ void Fun4All_raw_hit_ZeroField_std(
 
     auto *cleaner = new PHTrackCleaner();
     cleaner->Verbosity(0);
-    cleaner->set_pp_mode(TRACKING::pp_mode);
+    cleaner->set_streaming_mode(TRACKING::streaming_mode);
     se->registerSubsystem(cleaner);
 
     if (G4TRACKING::SC_CALIBMODE)
