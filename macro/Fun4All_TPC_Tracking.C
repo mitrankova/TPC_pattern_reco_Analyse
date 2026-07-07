@@ -49,8 +49,9 @@
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/InModuleTrackDisplay.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/FullTrackDisplay.h>
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyTrackDisplay.h>
-#include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyClusterDisplay.h>
 */
+#include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyClusterDisplay.h>
+
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyClusterResiduals.h>
 
 
@@ -100,11 +101,14 @@ class SkipFirstN : public SubsysReco {
 //.x Fun4All_raw_hit_ZeroField_frog.C(10, 79767, 0, ".", 0, "run3cosmics", "ana523_nocdbtag_v001","HITS_cosmics")
 //.x Fun4All_raw_hit_ZeroField_frog.C(10, 83174, 0, ".", 0, "run3line_laser", "ana540_nocdbtag_v001","HITS_line_laser")
 
+
+//.x Fun4All_TPC_Tracking.C(2,75405, 0, "/sphenix/tg/tg01/hf/mitrankova/PatternReco/75405/helixfit", 0, "run3auau", "ana514_nocdbtag_v001","HITS_clusters_seeds","HITS_HELIX_AuAu")
 void Fun4All_TPC_Tracking(
     const int nEvents = 10,
     const int runnumber = 79513,
     const int segment = 0,
     const std::string outdir = ".",
+    const std::string indir = ".",
     const int nSkip = 0,
     const std::string collision = "run3pp",
     const std::string production = "ana532_nocdbtag_v001",
@@ -119,7 +123,9 @@ void Fun4All_TPC_Tracking(
 
   const std::string dsttype = "STREAMING_EVENT";
 
-  std::string filename = outdir+"/output_DST/"+infilename+"_"+to_string(runnumber)+"_"+to_string(segment)+".root";
+ // std::string filename = indir+"/output_DST/"+infilename+"_"+to_string(runnumber)+"_"+to_string(segment)+".root";
+   std::string filename = indir+"/"+infilename+"_"+to_string(runnumber)+"_"+to_string(segment)+".root";
+
   auto *hitsinclus = new Fun4AllDstInputManager("ClusterInputManager");
   hitsinclus->fileopen(filename);
   se->registerInputManager(hitsinclus);
@@ -143,7 +149,7 @@ void Fun4All_TPC_Tracking(
             << " vdrift: " << G4TPC::tpc_drift_velocity_reco
             << std::endl;
 
-  TRACKING::pp_mode = true;
+  TRACKING::streaming_mode = true;
 
 
   FlagHandler *flag = new FlagHandler();
@@ -171,7 +177,7 @@ void Fun4All_TPC_Tracking(
   //se->registerSubsystem( new TpcPolyTrackReco());
    //se->registerSubsystem( new TpcPolyClusterizer());
   // se->registerSubsystem( new FinalTrackVertexer());
- //  se->registerSubsystem( new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_poly_cluster_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
+   //se->registerSubsystem( new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_poly_cluster_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
       auto resid = new TpcPolyClusterResiduals("TpcPolyClusterResiduals",
                                          outdir+"/outout_resid/tpc_poly_cluster_residuals"+outfilename+"_" + to_string(runnumber) + to_string(segment) + ".root" );
 resid->setMinPt(0.2);
