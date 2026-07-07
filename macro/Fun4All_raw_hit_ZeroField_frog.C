@@ -98,6 +98,8 @@ class SkipFirstN : public SubsysReco {
 
 //.x Fun4All_raw_hit_ZeroField_frog.C(10, 75396, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu")
 //.x Fun4All_raw_hit_ZeroField_frog.C(2, 75405, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu")
+//.x Fun4All_raw_hit_ZeroField_frog.C(2, 79605, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu")
+
 
 //.x Fun4All_raw_hit_ZeroField_frog.C(2, 82626, 0, ".", 0, "run3oo", "ana537_nocdbtag_v001","HITS_OO")
 //.x Fun4All_raw_hit_ZeroField_frog.C(10, 79767, 0, ".", 0, "run3cosmics", "ana523_nocdbtag_v001","HITS_cosmics")
@@ -188,11 +190,11 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
    std::string filepath = "/sphenix/lustre01/sphnxpro/production/" + collision + "/physics/" + production + "/DST_" + dsttype + "_" + stream + "/run_" + nice_rounded_down.str()  + "_" + nice_rounded_up.str()  + "/" + filename;
 
     std::ifstream testfile(filepath.c_str());
-    if (!testfile.good())
+   /* if (!testfile.good())
     {
       std::cout << "Skipping missing DST: " << filepath << std::endl;
       continue;
-    }
+    }*/
 
     std::cout << "Adding DST: " << filepath << std::endl;
     if (i == 0)
@@ -228,7 +230,8 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
             << " vdrift: " << G4TPC::tpc_drift_velocity_reco
             << std::endl;
 
-  TRACKING::pp_mode = true;
+  TRACKING::streaming_mode = true;
+   // TRACKING::pp_mode = true;
 
 
   FlagHandler *flag = new FlagHandler();
@@ -290,13 +293,13 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
   se->registerSubsystem(new TpcPolyClusterizer());       // makes TPCPOLYCLUSTERTRACKS
   se->registerSubsystem(new TpcPolyClusterTrackReco());  // makes FINALTRACKS
   se->registerSubsystem(new FinalTrackVertexer());       // makes FINALTRACKVERTICES
- se->registerSubsystem( new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_poly_cluster_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
-   auto resid = new TpcPolyClusterResiduals("TpcPolyClusterResiduals",
+ //se->registerSubsystem( new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_poly_cluster_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
+   /*auto resid = new TpcPolyClusterResiduals("TpcPolyClusterResiduals",
                                          outdir+"/outout_resid/tpc_poly_cluster_residuals"+outfilename+"_" + to_string(runnumber) + to_string(segment) + ".root" );
     resid->setMinPt(0.2);
     resid->setMinTpcClusters(20);
     se->registerSubsystem(resid);
-
+*/
 /*
     FullTrackConnector* fullconn = new FullTrackConnector();
     fullconn->Verbosity(0);
@@ -368,7 +371,7 @@ se->registerSubsystem(poly);
   out->AddNode("FINALTRACKVERTICES");
   out->AddNode("TRKR_CLUSTER");
 
-  //se->registerOutputManager(out);
+  se->registerOutputManager(out);
   
   se->run(nEvents+nSkip);
   se->Print("NODETREE");
