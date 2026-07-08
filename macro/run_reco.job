@@ -3,10 +3,10 @@ Initialdir         = /sphenix/user/mitrankova/F4A/macro
 Executable         = $(Initialdir)/run_reco.sh
 #Output            = /sphenix/user/mitrankova/F4A/log/helix_$(process).out
 #Error             = /sphenix/user/mitrankova/F4A/log/lambda_$(process).err
-Log                = /sphenix/user/mitrankova/F4A/log/lambda_$(process).log
+Log                = /sphenix/user/mitrankova/F4A/log/lambda_6$(process).log
 PeriodicHold       = (NumJobStarts>=1 && JobStatus == 1)
 request_memory     = 8GB
 Priority           = 20
 job_lease_duration = 3600
-Arguments          = 2 $(process) 0
-Queue 1000
+Arguments          = 100 $(process) 0
+Queue 459

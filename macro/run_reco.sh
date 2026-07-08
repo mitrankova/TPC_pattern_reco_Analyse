@@ -13,10 +13,14 @@ nEvents="$1"
 #collision="run3pp"
 #cdbtag="ana532_nocdbtag_v001"
 #OutDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/79513
-runnumber=75405
+#runnumber=75405
+#collision="run3auau"
+#cdbtag="ana514_nocdbtag_v001"
+#OutDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/75405
+runnumber=76905
 collision="run3auau"
 cdbtag="ana514_nocdbtag_v001"
-OutDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/75405
+OutDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/76905_6t0
 segment="$2"
 nSkip="$3"
 

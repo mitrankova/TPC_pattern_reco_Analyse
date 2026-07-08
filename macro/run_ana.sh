@@ -9,15 +9,21 @@ source /opt/sphenix/core/bin/sphenix_setup.sh new
 #printenv
 
 nEvents="$1"
-runnumber=79513
-collision="run3pp"
-cdbtag="ana532_nocdbtag_v001"
-OutDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/79513_keff_4
-InDir=/sphenix/user/mitrankov/patterns/run/output_DST/keff_4
+#runnumber=79513
+#collision="run3pp"
+#cdbtag="ana532_nocdbtag_v001"
+#OutDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/79513_keff_4
+#InDir=/sphenix/user/mitrankov/patterns/run/output_DST/keff_4
 #runnumber=75405
 #collision="run3auau"
 #cdbtag="ana514_nocdbtag_v001"
 #OutDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/75405
+#InDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/75405
+runnumber=76905
+collision="run3auau"
+cdbtag="ana514_nocdbtag_v001"
+OutDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/76905_6t0
+InDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/76905_6t0/output_DST
 segment="$2"
 nSkip="$3"
 

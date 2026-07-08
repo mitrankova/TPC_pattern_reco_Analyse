@@ -42,14 +42,15 @@
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/InModuleTracks.h>
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/FullTrackConnector.h>
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/TpcPolyTrackReco.h>
-//#include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/FullTrackVertexer.h>
+#include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/FullTrackVertexer.h>
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/TpcPolyClusterizer.h>
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/TpcPolyClusterTrackReco.h>
 #include </sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/include/inmoduletracks/FinalTrackVertexer.h>
 /*
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/InModuleTrackDisplay.h>
-#include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/FullTrackDisplay.h>
 */
+#include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/FullTrackDisplay.h>
+
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyTrackDisplay.h>
 
 #include </sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/include/inmoduletrackdisplay/TpcPolyClusterDisplay.h>
@@ -98,8 +99,8 @@ class SkipFirstN : public SubsysReco {
 
 //.x Fun4All_raw_hit_ZeroField_frog.C(10, 75396, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu")
 //.x Fun4All_raw_hit_ZeroField_frog.C(2, 75405, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu")
-//.x Fun4All_raw_hit_ZeroField_frog.C(2, 79605, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu")
-
+//.x Fun4All_raw_hit_ZeroField_frog.C(2, 76905, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_6x6_1mrad_AuAu")
+//.x Fun4All_raw_hit_ZeroField_frog.C(2, 76906, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_6x6_0mrad_AuAu")
 
 //.x Fun4All_raw_hit_ZeroField_frog.C(2, 82626, 0, ".", 0, "run3oo", "ana537_nocdbtag_v001","HITS_OO")
 //.x Fun4All_raw_hit_ZeroField_frog.C(10, 79767, 0, ".", 0, "run3cosmics", "ana523_nocdbtag_v001","HITS_cosmics")
@@ -231,7 +232,7 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
             << std::endl;
 
   TRACKING::streaming_mode = true;
-   // TRACKING::pp_mode = true;
+   //TRACKING::pp_mode = true;
 
 
   FlagHandler *flag = new FlagHandler();
@@ -288,18 +289,22 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
 
   se->registerSubsystem( new InModuleTracks());
   se->registerSubsystem( new FullTrackConnector());
-  //se->registerSubsystem( new FullTrackVertexer());
+  se->registerSubsystem( new FullTrackVertexer());
  // se->registerSubsystem( new TpcPolyTrackReco());
-  se->registerSubsystem(new TpcPolyClusterizer());       // makes TPCPOLYCLUSTERTRACKS
+ // se->registerSubsystem(new TpcPolyClusterizer());       // makes TPCPOLYCLUSTERTRACKS
+  auto cluster = new TpcPolyClusterizer();
+  cluster->setT0(6);
+  se->registerSubsystem(cluster);
+
   se->registerSubsystem(new TpcPolyClusterTrackReco());  // makes FINALTRACKS
   se->registerSubsystem(new FinalTrackVertexer());       // makes FINALTRACKVERTICES
- //se->registerSubsystem( new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_poly_cluster_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
-   /*auto resid = new TpcPolyClusterResiduals("TpcPolyClusterResiduals",
+// se->registerSubsystem( new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_poly_cluster_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
+   auto resid = new TpcPolyClusterResiduals("TpcPolyClusterResiduals",
                                          outdir+"/outout_resid/tpc_poly_cluster_residuals"+outfilename+"_" + to_string(runnumber) + to_string(segment) + ".root" );
     resid->setMinPt(0.2);
     resid->setMinTpcClusters(20);
     se->registerSubsystem(resid);
-*/
+
 /*
     FullTrackConnector* fullconn = new FullTrackConnector();
     fullconn->Verbosity(0);
@@ -317,7 +322,7 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
   //  imt->Verbosity(10);   // or 2, 3, etc.
   //  se->registerSubsystem(imt);
 
-   //se->registerSubsystem( new FullTrackDisplay( "FullTrackDisplay", "full_track_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
+  // se->registerSubsystem( new FullTrackDisplay( "FullTrackDisplay", "full_track_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
 
   // auto display = new FullTrackDisplay( "FullTrackDisplay", "34_full_track_display_"+outfilename+"_" + to_string(runnumber) + ".root" );
    //display->setPlotNModulesRange(1, 2);
