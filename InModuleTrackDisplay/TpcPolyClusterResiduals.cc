@@ -118,44 +118,61 @@ namespace
     return std::isfinite(z_at_dca);
   }
 
-  bool helix_z_at_dca_to_point(const HelixCircle& circle,
-                               const double point_x,
-                               const double point_y,
-                               const double arc_direction,
-                               double& z_at_dca)
+  bool helix_z_at_radius(const HelixCircle& circle,
+                         const double target_r,
+                         const double reference_z,
+                         const double arc_direction,
+                         double& z_state)
   {
     if (!circle.ok) return false;
 
-    const double dx = point_x - circle.xc;
-    const double dy = point_y - circle.yc;
-    const double dc = std::hypot(dx, dy);
-    if (!std::isfinite(dc) || dc <= 1.0e-12) return false;
-
-    const double pca_x = circle.xc + circle.radius * dx / dc;
-    const double pca_y = circle.yc + circle.radius * dy / dc;
-    const double pca_phi_on_circle = std::atan2(pca_y - circle.yc, pca_x - circle.xc);
-
-    double best_arc = 0.0;
-    double best_abs_arc = std::numeric_limits<double>::max();
-    const double pi = std::acos(-1.0);
-    for (int k = -4; k <= 4; ++k)
+    const double center_r = std::hypot(circle.xc, circle.yc);
+    if (!std::isfinite(target_r) || !std::isfinite(center_r) ||
+        target_r <= 0.0 || center_r <= 1.0e-12)
     {
-      const double dphi = pca_phi_on_circle - circle.phi0 + 2.0 * pi * static_cast<double>(k);
-      const double arc = -circle.sign * circle.radius * dphi;
-      if (arc_direction * arc < 0.0) continue;
+      return false;
+    }
 
-      const double abs_arc = std::fabs(arc);
-      if (abs_arc < best_abs_arc)
+    const double radius_sum = target_r + circle.radius;
+    const double radius_diff = std::fabs(target_r - circle.radius);
+    if (center_r > radius_sum || center_r < radius_diff) return false;
+
+    const double a = (target_r * target_r - circle.radius * circle.radius + center_r * center_r) /
+                     (2.0 * center_r);
+    const double h2 = target_r * target_r - a * a;
+    if (h2 < -1.0e-8) return false;
+
+    const double h = std::sqrt(std::max(0.0, h2));
+    const double ux = circle.xc / center_r;
+    const double uy = circle.yc / center_r;
+
+    double best_z = 0.0;
+    double best_abs_dz = std::numeric_limits<double>::max();
+    const double pi = std::acos(-1.0);
+    for (int isign = -1; isign <= 1; isign += 2)
+    {
+      const double x = a * ux - static_cast<double>(isign) * h * uy;
+      const double y = a * uy + static_cast<double>(isign) * h * ux;
+      const double phi_on_circle = std::atan2(y - circle.yc, x - circle.xc);
+
+      for (int k = -4; k <= 4; ++k)
       {
-        best_abs_arc = abs_arc;
-        best_arc = arc;
+        const double dphi = phi_on_circle - circle.phi0 + 2.0 * pi * static_cast<double>(k);
+        const double arc = -circle.sign * circle.radius * dphi;
+        const double z = circle.z0 + arc_direction * circle.dzds * arc;
+        const double abs_dz = std::fabs(z - reference_z);
+        if (abs_dz < best_abs_dz)
+        {
+          best_abs_dz = abs_dz;
+          best_z = z;
+        }
       }
     }
 
-    if (best_abs_arc == std::numeric_limits<double>::max()) return false;
+    if (best_abs_dz == std::numeric_limits<double>::max()) return false;
 
-    z_at_dca = circle.z0 + circle.dzds * best_arc;
-    return std::isfinite(z_at_dca);
+    z_state = best_z;
+    return std::isfinite(z_state);
   }
 
   bool choose_collision_vertex(const FinalTrackVertexContainer* vertices,
@@ -425,12 +442,12 @@ int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
   if (!get_nodes(topNode)) return Fun4AllReturnCodes::EVENT_OK;
   if (!m_tree) return Fun4AllReturnCodes::EVENT_OK;
 
-  std::map<unsigned int, const TpcPolyClusterTrack*> cluster_tracks_by_full_track_id;
+  std::map<unsigned int, const TpcPolyClusterTrack*> cluster_tracks_by_track_id;
   for (unsigned int itrack = 0; itrack < m_clusterTracks->size(); ++itrack)
   {
     const TpcPolyClusterTrack* trk = m_clusterTracks->get_track(itrack);
     if (!trk || !trk->isValid()) continue;
-    cluster_tracks_by_full_track_id[trk->get_source_full_track_id()] = trk;
+    cluster_tracks_by_track_id[trk->get_track_id()] = trk;
   }
 
   unsigned int nfilled = 0;
@@ -452,8 +469,8 @@ int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
     const double ndf = final_track->get_ndf();
     const double quality = (std::isfinite(chi2) && std::isfinite(ndf) && ndf > 0.0) ? chi2 / ndf : std::numeric_limits<double>::quiet_NaN();
 
-    const auto cluster_iter = cluster_tracks_by_full_track_id.find(final_track->get_source_full_track_id());
-    if (cluster_iter == cluster_tracks_by_full_track_id.end()) continue;
+    const auto cluster_iter = cluster_tracks_by_track_id.find(final_track->get_track_id());
+    if (cluster_iter == cluster_tracks_by_track_id.end()) continue;
 
     const TpcPolyClusterTrack* cluster_track = cluster_iter->second;
     const unsigned int ntpc_clusters = cluster_track->size_clusters();
@@ -486,11 +503,12 @@ int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
       double state_y = 0.0;
       if (!project_track_to_z(final_track, cluster_z, m_magneticFieldTesla, arc_direction, state_x, state_y)) continue;
 
-      double state_z_dca = std::numeric_limits<double>::quiet_NaN();
+      const int cluster_side = cluster_track->get_side();
+      double state_z = std::numeric_limits<double>::quiet_NaN();
       double residual_z = std::numeric_limits<double>::quiet_NaN();
-      if (helix_z_at_dca_to_point(circle, cluster_x, cluster_y, arc_direction, state_z_dca))
+      if (helix_z_at_radius(circle, std::hypot(cluster_x, cluster_y), cluster_z, arc_direction, state_z))
       {
-        residual_z = cluster_z - state_z_dca;
+        residual_z = cluster_z - state_z;
       }
 
       reset_tree_values();
@@ -499,7 +517,7 @@ int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
       m_clusterTrackId = cluster_track->get_track_id();
       m_sourceFullTrackId = final_track->get_source_full_track_id();
       m_clusterIndex = icluster;
-      m_side = cluster_track->get_side();
+      m_side = cluster_side;
       m_sector = cluster_sector(cluster_track, icluster);
       m_layer = cluster_track->get_cluster_layer(icluster);
       m_ntpcClusters = ntpc_clusters;
@@ -523,8 +541,8 @@ int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
       m_clusterPhi = std::atan2(cluster_y, cluster_x);
       m_stateX = state_x;
       m_stateY = state_y;
-      m_stateZ = cluster_z;
-      m_stateZDca = state_z_dca;
+      m_stateZ = state_z;
+      m_stateZDca = state_z;
       m_stateR = std::hypot(state_x, state_y);
       m_statePhi = std::atan2(state_y, state_x);
       m_deltaPhi = wrap_phi(m_clusterPhi - m_statePhi);
