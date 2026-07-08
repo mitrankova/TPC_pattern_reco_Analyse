@@ -15,10 +15,12 @@
 #include <TTree.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <limits>
 #include <map>
+#include <vector>
 
 namespace
 {
@@ -299,6 +301,82 @@ namespace
     return n > 0 ? sum / static_cast<double>(n) : std::numeric_limits<double>::max();
   }
 
+  double dedx_thickness_for_layer(const unsigned int layer,
+                                  const std::array<double, 4>& thickness_per_region)
+  {
+    if (layer < 23)
+    {
+      return (layer % 2 == 0) ? thickness_per_region[1] : thickness_per_region[0];
+    }
+    if (layer < 39)
+    {
+      return thickness_per_region[2];
+    }
+    return thickness_per_region[3];
+  }
+
+  double calc_dedx(const TpcPolyClusterTrack* cluster_track,
+                   const HelixCircle& circle,
+                   const std::array<double, 4>& thickness_per_region)
+  {
+    if (!cluster_track || !cluster_track->isValid() || !circle.ok)
+    {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    std::vector<double> dedxlist;
+    for (unsigned int icluster = 0; icluster < cluster_track->size_clusters(); ++icluster)
+    {
+      const unsigned int layer = cluster_track->get_cluster_layer(icluster);
+      const double thick = dedx_thickness_for_layer(layer, thickness_per_region);
+      const double r = std::hypot(cluster_track->get_cluster_x(icluster),
+                                  cluster_track->get_cluster_y(icluster));
+      double adc = cluster_track->get_cluster_adc(icluster);
+      if (!std::isfinite(adc) || !std::isfinite(thick) || !std::isfinite(r) ||
+          thick <= 0.0 || r <= 0.0 || circle.radius <= 0.0)
+      {
+        continue;
+      }
+
+      const double alpha = (r * r) / (2.0 * r * circle.radius);
+      const double beta = std::atan(circle.dzds);
+      double alphacorr = std::cos(alpha);
+      if (alphacorr < 0.0 || alphacorr > 4.0)
+      {
+        alphacorr = 4.0;
+      }
+      double betacorr = std::cos(beta);
+      if (betacorr < 0.0 || betacorr > 4.0)
+      {
+        betacorr = 4.0;
+      }
+
+      adc /= thick;
+      adc *= alphacorr;
+      adc *= betacorr;
+      dedxlist.push_back(adc);
+      std::sort(dedxlist.begin(), dedxlist.end());
+    }
+
+    if (dedxlist.empty())
+    {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    const int trunc_min = 0;
+    const int trunc_max = static_cast<int>(dedxlist.size() * 0.7);
+    double sumdedx = 0.0;
+    int ndedx = 0;
+    for (int j = trunc_min; j <= trunc_max; ++j)
+    {
+      sumdedx += dedxlist.at(j);
+      ++ndedx;
+    }
+
+    sumdedx /= static_cast<double>(ndedx);
+    return sumdedx;
+  }
+
 }
 
 TpcPolyClusterResiduals::TpcPolyClusterResiduals(const std::string& name,
@@ -341,22 +419,31 @@ int TpcPolyClusterResiduals::Init(PHCompositeNode*)
   m_tree->Branch("ntpc_clusters", &m_ntpcClusters, "ntpc_clusters/i");
   m_tree->Branch("fit_status", &m_fitStatus, "fit_status/I");
   m_tree->Branch("pt", &m_pt, "pt/D");
+  m_tree->Branch("px", &m_px, "px/D");
+  m_tree->Branch("py", &m_py, "py/D");
+  m_tree->Branch("pz", &m_pz, "pz/D");
   m_tree->Branch("eta", &m_eta, "eta/D");
   m_tree->Branch("theta", &m_theta, "theta/D");
   m_tree->Branch("charge", &m_charge, "charge/D");
   m_tree->Branch("chi2", &m_chi2, "chi2/D");
   m_tree->Branch("ndf", &m_ndf, "ndf/D");
   m_tree->Branch("quality", &m_quality, "quality/D");
+  m_tree->Branch("dedx", &m_dedx, "dedx/D");
   m_tree->Branch("vertex_x", &m_vertexX, "vertex_x/D");
   m_tree->Branch("vertex_y", &m_vertexY, "vertex_y/D");
   m_tree->Branch("vertex_z", &m_vertexZ, "vertex_z/D");
+  m_tree->Branch("vertex_r", &m_vertexR, "vertex_r/D");
   m_tree->Branch("rDCA", &m_rDCA, "rDCA/D");
   m_tree->Branch("rDCA_zero", &m_rDCAZero, "rDCA_zero/D");
+  m_tree->Branch("R", &m_R, "R/D");
+  m_tree->Branch("rzslope", &m_rzSlope, "rzslope/D");
   m_tree->Branch("cluster_x", &m_clusterX, "cluster_x/D");
   m_tree->Branch("cluster_y", &m_clusterY, "cluster_y/D");
   m_tree->Branch("cluster_z", &m_clusterZ, "cluster_z/D");
   m_tree->Branch("cluster_r", &m_clusterR, "cluster_r/D");
   m_tree->Branch("cluster_phi", &m_clusterPhi, "cluster_phi/D");
+  m_tree->Branch("cluster_adc", &m_clusterAdc, "cluster_adc/D");
+  m_tree->Branch("cluster_pad_size", &m_clusterPadSize, "cluster_pad_size/i");
   m_tree->Branch("state_x", &m_stateX, "state_x/D");
   m_tree->Branch("state_y", &m_stateY, "state_y/D");
   m_tree->Branch("state_z", &m_stateZ, "state_z/D");
@@ -409,22 +496,31 @@ void TpcPolyClusterResiduals::reset_tree_values()
   m_ntpcClusters = 0;
   m_fitStatus = 0;
   m_pt = 0.0;
+  m_px = std::numeric_limits<double>::quiet_NaN();
+  m_py = std::numeric_limits<double>::quiet_NaN();
+  m_pz = std::numeric_limits<double>::quiet_NaN();
   m_eta = std::numeric_limits<double>::quiet_NaN();
   m_theta = std::numeric_limits<double>::quiet_NaN();
   m_charge = 0.0;
   m_chi2 = 0.0;
   m_ndf = 0.0;
   m_quality = std::numeric_limits<double>::quiet_NaN();
+  m_dedx = std::numeric_limits<double>::quiet_NaN();
   m_vertexX = std::numeric_limits<double>::quiet_NaN();
   m_vertexY = std::numeric_limits<double>::quiet_NaN();
   m_vertexZ = std::numeric_limits<double>::quiet_NaN();
+  m_vertexR = std::numeric_limits<double>::quiet_NaN();
   m_rDCA = std::numeric_limits<double>::quiet_NaN();
   m_rDCAZero = std::numeric_limits<double>::quiet_NaN();
+  m_R = std::numeric_limits<double>::quiet_NaN();
+  m_rzSlope = std::numeric_limits<double>::quiet_NaN();
   m_clusterX = 0.0;
   m_clusterY = 0.0;
   m_clusterZ = 0.0;
   m_clusterR = 0.0;
   m_clusterPhi = 0.0;
+  m_clusterAdc = 0.0;
+  m_clusterPadSize = 0;
   m_stateX = 0.0;
   m_stateY = 0.0;
   m_stateZ = 0.0;
@@ -486,6 +582,8 @@ int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
     double rdca = std::numeric_limits<double>::quiet_NaN();
     double rdca_zero = std::numeric_limits<double>::quiet_NaN();
     const HelixCircle circle = make_track_circle(final_track, m_magneticFieldTesla);
+    const double dedx = calc_dedx(cluster_track, circle, m_dedxThicknessPerRegion);
+
     if (choose_collision_vertex(m_finalTrackVertices, circle, vertex_x, vertex_y, vertex_z))
     {
       rdca = std::hypot(circle.xc - vertex_x, circle.yc - vertex_y) - circle.radius;
@@ -523,22 +621,31 @@ int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
       m_ntpcClusters = ntpc_clusters;
       m_fitStatus = final_track->get_fit_status();
       m_pt = pt;
+      m_px = px;
+      m_py = py;
+      m_pz = pz;
       m_eta = eta;
       m_theta = theta;
       m_charge = final_track->get_charge();
       m_chi2 = chi2;
       m_ndf = ndf;
       m_quality = quality;
+      m_dedx = dedx;
       m_vertexX = vertex_x;
       m_vertexY = vertex_y;
       m_vertexZ = vertex_z;
+      m_vertexR = std::hypot(vertex_x, vertex_y);
       m_rDCA = rdca;
       m_rDCAZero = rdca_zero;
+      m_R = circle.ok ? circle.radius : std::numeric_limits<double>::quiet_NaN();
+      m_rzSlope = circle.ok ? circle.dzds : std::numeric_limits<double>::quiet_NaN();
       m_clusterX = cluster_x;
       m_clusterY = cluster_y;
       m_clusterZ = cluster_z;
       m_clusterR = std::hypot(cluster_x, cluster_y);
       m_clusterPhi = std::atan2(cluster_y, cluster_x);
+      m_clusterAdc = cluster_track->get_cluster_adc(icluster);
+      m_clusterPadSize = cluster_track->get_cluster_phi_width(icluster);
       m_stateX = state_x;
       m_stateY = state_y;
       m_stateZ = state_z;

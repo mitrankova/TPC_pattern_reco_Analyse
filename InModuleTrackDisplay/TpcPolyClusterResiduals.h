@@ -3,6 +3,7 @@
 
 #include <fun4all/SubsysReco.h>
 
+#include <array>
 #include <string>
 
 class FinalTrackContainer;
@@ -32,6 +33,10 @@ class TpcPolyClusterResiduals : public SubsysReco
   void setMaxPt(double v) { m_maxPt = v; }
   void setMinTpcClusters(unsigned int v) { m_minTpcClusters = v; }
   void setMaxTpcClusters(unsigned int v) { m_maxTpcClusters = v; }
+  void setDedxThicknessPerRegion(double inner_odd, double inner_even, double mid, double outer)
+  {
+    m_dedxThicknessPerRegion = {{inner_odd, inner_even, mid, outer}};
+  }
 
  private:
   bool get_nodes(PHCompositeNode* topNode);
@@ -47,6 +52,7 @@ class TpcPolyClusterResiduals : public SubsysReco
   double m_maxPt {1.0e30};
   unsigned int m_minTpcClusters {0};
   unsigned int m_maxTpcClusters {0xffffffffu};
+  std::array<double, 4> m_dedxThicknessPerRegion {{1.0, 1.0, 1.0, 1.0}};
 
   unsigned int m_evt {0};
   TFile* m_outfile {nullptr};
@@ -66,22 +72,31 @@ class TpcPolyClusterResiduals : public SubsysReco
   unsigned int m_ntpcClusters {0};
   int m_fitStatus {0};
   double m_pt {0.0};
+  double m_px {0.0};
+  double m_py {0.0};
+  double m_pz {0.0};
   double m_eta {0.0};
   double m_theta {0.0};
   double m_charge {0.0};
   double m_chi2 {0.0};
   double m_ndf {0.0};
   double m_quality {0.0};
+  double m_dedx {0.0};
   double m_vertexX {0.0};
   double m_vertexY {0.0};
   double m_vertexZ {0.0};
+  double m_vertexR {0.0};
   double m_rDCA {0.0};
   double m_rDCAZero {0.0};
+  double m_R {0.0};
+  double m_rzSlope {0.0};
   double m_clusterX {0.0};
   double m_clusterY {0.0};
   double m_clusterZ {0.0};
   double m_clusterR {0.0};
   double m_clusterPhi {0.0};
+  double m_clusterAdc {0.0};
+  unsigned int m_clusterPadSize {0};
   double m_stateX {0.0};
   double m_stateY {0.0};
   double m_stateZ {0.0};
