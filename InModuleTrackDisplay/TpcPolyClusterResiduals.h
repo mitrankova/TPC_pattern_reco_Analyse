@@ -34,6 +34,7 @@ class TpcPolyClusterResiduals : public SubsysReco
   void setMaxPt(double v) { m_maxPt = v; }
   void setMinTpcClusters(unsigned int v) { m_minTpcClusters = v; }
   void setMaxTpcClusters(unsigned int v) { m_maxTpcClusters = v; }
+  void setUseStraightLineTracks(bool v) { m_useStraightLineTracks = v; }
   void setDedxThicknessPerRegion(double inner_odd, double inner_even, double mid, double outer)
   {
     m_dedxThicknessPerRegion = {{inner_odd, inner_even, mid, outer}};
@@ -53,6 +54,7 @@ class TpcPolyClusterResiduals : public SubsysReco
   double m_maxPt {1.0e30};
   unsigned int m_minTpcClusters {0};
   unsigned int m_maxTpcClusters {0xffffffffu};
+  bool m_useStraightLineTracks {false};
   std::array<double, 4> m_dedxThicknessPerRegion {{1.0, 1.0, 1.0, 1.0}};
 
   unsigned int m_evt {0};

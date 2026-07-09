@@ -90,6 +90,7 @@ namespace
                            const double z,
                            const double magnetic_field_tesla,
                            const double arc_direction,
+                           const bool use_straight_line,
                            double& x,
                            double& y)
   {
@@ -109,16 +110,17 @@ namespace
       return false;
     }
 
-    const double pt = std::hypot(px, py);
-    if (pt <= 0.0 || std::fabs(pz) < 1.0e-12) return false;
-
     const double dz = z - z0;
-    if (std::fabs(charge * magnetic_field_tesla) < 1.0e-12)
+    if (use_straight_line || std::fabs(charge * magnetic_field_tesla) < 1.0e-12)
     {
+      if (std::fabs(pz) < 1.0e-12) return false;
       x = x0 + arc_direction * px / pz * dz;
       y = y0 + arc_direction * py / pz * dz;
       return std::isfinite(x) && std::isfinite(y);
     }
+
+    const double pt = std::hypot(px, py);
+    if (pt <= 0.0 || std::fabs(pz) < 1.0e-12) return false;
 
     const double signed_radius = pt / (0.003 * charge * magnetic_field_tesla);
     const double radius = std::fabs(signed_radius);
@@ -143,7 +145,8 @@ namespace
   double cluster_line_residual2(const FinalTrack* final_track,
                                 const TpcPolyClusterTrack* cluster_track,
                                 const double magnetic_field_tesla,
-                                const double arc_direction)
+                                const double arc_direction,
+                                const bool use_straight_line)
   {
     if (!final_track || !cluster_track || !cluster_track->isValid()) return std::numeric_limits<double>::max();
 
@@ -158,7 +161,7 @@ namespace
 
       double x = 0.0;
       double y = 0.0;
-      if (!final_track_xy_at_z(final_track, cz, magnetic_field_tesla, arc_direction, x, y)) continue;
+      if (!final_track_xy_at_z(final_track, cz, magnetic_field_tesla, arc_direction, use_straight_line, x, y)) continue;
 
       const double dx = x - cx;
       const double dy = y - cy;
@@ -175,6 +178,7 @@ namespace
                                      const double xymax,
                                      const double magnetic_field_tesla,
                                      const double arc_direction,
+                                     const bool use_straight_line,
                                      const int color)
   {
     if (!trk || trk->get_fit_status() == 0) return nullptr;
@@ -193,7 +197,7 @@ namespace
       const double z = zmin + f * (zmax - zmin);
       double x = 0.0;
       double y = 0.0;
-      if (!final_track_xy_at_z(trk, z, magnetic_field_tesla, arc_direction, x, y)) continue;
+      if (!final_track_xy_at_z(trk, z, magnetic_field_tesla, arc_direction, use_straight_line, x, y)) continue;
       if (std::fabs(x) > xymax || std::fabs(y) > xymax) continue;
       zs.push_back(z);
       xs.push_back(x);
@@ -282,6 +286,7 @@ TpcPolyClusterDisplay::TpcPolyClusterDisplay(const std::string& name,
   , m_trackVertexZMax(20.0)
   , m_xymax(85.0)
   , m_magneticFieldTesla(1.4)
+  , m_useStraightLineTracks(false)
   , m_outfile(nullptr)
   , m_clusterTracks(nullptr)
   , m_finalTracks(nullptr)
@@ -413,12 +418,14 @@ int TpcPolyClusterDisplay::process_event(PHCompositeNode* topNode)
     double line_zmax = m_zmax;
     if (!cluster_track_z_range(cluster_iter->second, m_zmin, m_zmax, line_zmin, line_zmax)) continue;
 
-    const double forward_residual2 = cluster_line_residual2(trk, cluster_iter->second, m_magneticFieldTesla, 1.0);
-    const double reverse_residual2 = cluster_line_residual2(trk, cluster_iter->second, m_magneticFieldTesla, -1.0);
+    const bool use_straight_line = m_useStraightLineTracks || std::fabs(trk->get_charge() * m_magneticFieldTesla) < 1.0e-12;
+    const double forward_residual2 = cluster_line_residual2(trk, cluster_iter->second, m_magneticFieldTesla, 1.0, use_straight_line);
+    const double reverse_residual2 = cluster_line_residual2(trk, cluster_iter->second, m_magneticFieldTesla, -1.0, use_straight_line);
     const double arc_direction = forward_residual2 <= reverse_residual2 ? 1.0 : -1.0;
 
     TPolyLine3D* line = make_final_track_line(trk, line_zmin, line_zmax, m_xymax,
                                                m_magneticFieldTesla, arc_direction,
+                                               use_straight_line,
                                                cluster_color(cluster_iter->second->get_track_id()));
     if (line) lines.push_back(line);
   }

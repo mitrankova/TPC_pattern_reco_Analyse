@@ -31,6 +31,7 @@ class TpcPolyClusterDisplay : public SubsysReco
   void setZRange(double zmin, double zmax) { m_zmin = zmin; m_zmax = zmax; }
   void setTrackVertexZRange(double zmin, double zmax) { m_trackVertexZMin = zmin; m_trackVertexZMax = zmax; }
   void setXYRange(double xymax) { m_xymax = xymax; }
+  void setUseStraightLineTracks(bool v) { m_useStraightLineTracks = v; }
 
  private:
   bool get_nodes(PHCompositeNode* topNode);
@@ -48,6 +49,7 @@ class TpcPolyClusterDisplay : public SubsysReco
   double m_trackVertexZMax;
   double m_xymax;
   double m_magneticFieldTesla;
+  bool m_useStraightLineTracks;
 
   TFile* m_outfile;
   TpcPolyClusterTrackContainer* m_clusterTracks;
