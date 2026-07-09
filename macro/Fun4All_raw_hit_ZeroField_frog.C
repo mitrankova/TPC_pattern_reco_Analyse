@@ -82,7 +82,7 @@ class SkipFirstN : public SubsysReco {
   int count_  = 0;
 };
 //xxxxxxxxxxxxxxxxxxxxxxxxxx  .x Fun4All_raw_hit_ZeroField_frog.C(10, 81000, 0, ".", 0, "run3pp", "ana537_nocdbtag_v001","HITS_ppZeroField")
-//xxxxxxxxxxxxxxxxxxxxxxxxxx  .x Fun4All_raw_hit_ZeroField_frog.C(10, 81000, 0, ".", 0, "run3pp", "ana537_nocdbtag_v001","HITS_ppZeroField")
+// .x Fun4All_raw_hit_ZeroField_frog.C(3, 81000, 0, ".", 0, "run3pp", "ana532_nocdbtag_v001","HITS_ppZeroField")
 
 
 //xxxxxxxxxxxxxxxxxxxxxxxxxx  .x Fun4All_raw_hit_ZeroField_frog.C(3, 79513, 0, ".", 0, "run3pp", "ana537_nocdbtag_v001","HITS_ppFieldOn")
@@ -99,12 +99,12 @@ class SkipFirstN : public SubsysReco {
 
 //.x Fun4All_raw_hit_ZeroField_frog.C(10, 75396, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu")
 //.x Fun4All_raw_hit_ZeroField_frog.C(2, 75405, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu")
-//.x Fun4All_raw_hit_ZeroField_frog.C(2, 76905, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_6x6_1mrad_AuAu")
+//.x Fun4All_raw_hit_ZeroField_frog.C(10, 76905, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_6x6_1mrad_AuAu")
 //.x Fun4All_raw_hit_ZeroField_frog.C(2, 76906, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_6x6_0mrad_AuAu")
 
 //.x Fun4All_raw_hit_ZeroField_frog.C(2, 82626, 0, ".", 0, "run3oo", "ana537_nocdbtag_v001","HITS_OO")
 //.x Fun4All_raw_hit_ZeroField_frog.C(10, 79767, 0, ".", 0, "run3cosmics", "ana523_nocdbtag_v001","HITS_cosmics")
-//.x Fun4All_raw_hit_ZeroField_frog.C(10, 83174, 0, ".", 0, "run3line_laser", "ana540_nocdbtag_v001","HITS_line_laser")
+//.x Fun4All_raw_hit_ZeroField_frog.C(100, 78164, 0, ".", 0, "run3line_laser", "ana540_nocdbtag_v001","HITS_line_laser","line_laser")
 
 void Fun4All_raw_hit_ZeroField_frog(
     const int nEvents = 10,
@@ -114,7 +114,8 @@ void Fun4All_raw_hit_ZeroField_frog(
     const int nSkip = 0,
     const std::string collision = "run3pp",
     const std::string production = "ana532_nocdbtag_v001",
-    const std::string& outfilename = "HITS_clusters_seeds")
+    const std::string& outfilename = "HITS_clusters_seeds",
+    const std::string datatype = "physics")
 {
   const bool convertSeeds = true;
   auto *se = Fun4AllServer::instance();
@@ -188,10 +189,10 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
     const std::string stream = streams[is];
 
     std::string filename = "DST_" + dsttype + "_" + stream + "_" + collision + "_" + production + "-" +  runstr.str() + "-" + segstr.str() + ".root";
-   std::string filepath = "/sphenix/lustre01/sphnxpro/production/" + collision + "/physics/" + production + "/DST_" + dsttype + "_" + stream + "/run_" + nice_rounded_down.str()  + "_" + nice_rounded_up.str()  + "/" + filename;
+   std::string filepath = "/sphenix/lustre01/sphnxpro/production/" + collision + "/"+datatype+"/" + production + "/DST_" + dsttype + "_" + stream + "/run_" + nice_rounded_down.str()  + "_" + nice_rounded_up.str()  + "/" + filename;
 
-    std::ifstream testfile(filepath.c_str());
-   /* if (!testfile.good())
+   /* std::ifstream testfile(filepath.c_str());
+   if (!testfile.good())
     {
       std::cout << "Skipping missing DST: " << filepath << std::endl;
       continue;
@@ -206,7 +207,7 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
 
     std::string inputname = "InputManager" + std::to_string(i);
     auto *hitsin = new Fun4AllDstInputManager(inputname);
-    hitsin->fileopen(filepath);
+    hitsin->fileopen(filename);
     se->registerInputManager(hitsin);
 
     ++i;
@@ -232,7 +233,7 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
             << std::endl;
 
   TRACKING::streaming_mode = true;
-   //TRACKING::pp_mode = true;
+  // TRACKING::pp_mode = true;
 
 
   FlagHandler *flag = new FlagHandler();
@@ -294,16 +295,30 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
  // se->registerSubsystem(new TpcPolyClusterizer());       // makes TPCPOLYCLUSTERTRACKS
   auto cluster = new TpcPolyClusterizer();
   cluster->setT0(6);
+  //cluster->setTpcAdcClock(53.326184);
+  //cluster->setReverseDriftStepNs(53.326184);
   se->registerSubsystem(cluster);
 
   se->registerSubsystem(new TpcPolyClusterTrackReco());  // makes FINALTRACKS
+  //auto track = new TpcPolyClusterTrackReco();
+  //track->setUseLine3DFit(true);
+ // se->registerSubsystem(track);
+
+
   se->registerSubsystem(new FinalTrackVertexer());       // makes FINALTRACKVERTICES
-// se->registerSubsystem( new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_poly_cluster_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
+se->registerSubsystem( new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_poly_cluster_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
+
+//auto display = new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_poly_cluster_display_"+outfilename+"_" + to_string(runnumber) + ".root" );
+//display->setUseStraightLineTracks(true);
+//se ->registerSubsystem(display);
+
    auto resid = new TpcPolyClusterResiduals("TpcPolyClusterResiduals",
                                          outdir+"/outout_resid/tpc_poly_cluster_residuals"+outfilename+"_" + to_string(runnumber) + to_string(segment) + ".root" );
-    resid->setMinPt(0.2);
-    resid->setMinTpcClusters(20);
+    resid->setMinPt(0);
+    resid->setMinTpcClusters(15);
+    //resid->setUseStraightLineTracks(true);
     se->registerSubsystem(resid);
+    
 
 /*
     FullTrackConnector* fullconn = new FullTrackConnector();
@@ -376,7 +391,7 @@ se->registerSubsystem(poly);
   out->AddNode("FINALTRACKVERTICES");
   out->AddNode("TRKR_CLUSTER");
 
-  se->registerOutputManager(out);
+  //se->registerOutputManager(out);
   
   se->run(nEvents+nSkip);
   se->Print("NODETREE");

@@ -5,8 +5,8 @@ Executable         = $(Initialdir)/run_ana.sh
 #Error             = /sphenix/user/mitrankova/F4A/log/lambda_$(process).err
 Log                = /sphenix/user/mitrankova/F4A/log/ana_$(process).log
 PeriodicHold       = (NumJobStarts>=1 && JobStatus == 1)
-request_memory     = 2GB
+request_memory     = 4GB
 Priority           = 20
 job_lease_duration = 3600
-Arguments          = 100 $(process) 0
-Queue 1000
+Arguments          = 2 $(process) 0
+Queue 185
