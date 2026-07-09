@@ -5,6 +5,7 @@
 
 #include <array>
 #include <string>
+#include <vector>
 
 class FinalTrackContainer;
 class FinalTrackVertexContainer;
@@ -65,10 +66,7 @@ class TpcPolyClusterResiduals : public SubsysReco
   unsigned int m_finalTrackId {0};
   unsigned int m_clusterTrackId {0};
   unsigned int m_sourceFullTrackId {0};
-  unsigned int m_clusterIndex {0};
   int m_side {0};
-  unsigned int m_sector {0};
-  unsigned int m_layer {0};
   unsigned int m_ntpcClusters {0};
   int m_fitStatus {0};
   double m_pt {0.0};
@@ -86,26 +84,33 @@ class TpcPolyClusterResiduals : public SubsysReco
   double m_vertexY {0.0};
   double m_vertexZ {0.0};
   double m_vertexR {0.0};
+  double m_pcaX {0.0};
+  double m_pcaY {0.0};
+  double m_pcaZ {0.0};
+  double m_zDCA {0.0};
   double m_rDCA {0.0};
   double m_rDCAZero {0.0};
   double m_R {0.0};
   double m_rzSlope {0.0};
-  double m_clusterX {0.0};
-  double m_clusterY {0.0};
-  double m_clusterZ {0.0};
-  double m_clusterR {0.0};
-  double m_clusterPhi {0.0};
-  double m_clusterAdc {0.0};
-  unsigned int m_clusterPadSize {0};
-  double m_stateX {0.0};
-  double m_stateY {0.0};
-  double m_stateZ {0.0};
-  double m_stateZDca {0.0};
-  double m_stateR {0.0};
-  double m_statePhi {0.0};
-  double m_deltaPhi {0.0};
-  double m_residualRPhi {0.0};
-  double m_residualZ {0.0};
+  std::vector<unsigned int> m_clusterIndex;
+  std::vector<unsigned int> m_sector;
+  std::vector<unsigned int> m_layer;
+  std::vector<double> m_clusterX;
+  std::vector<double> m_clusterY;
+  std::vector<double> m_clusterZ;
+  std::vector<double> m_clusterR;
+  std::vector<double> m_clusterPhi;
+  std::vector<double> m_clusterAdc;
+  std::vector<unsigned int> m_clusterPadSize;
+  std::vector<double> m_stateX;
+  std::vector<double> m_stateY;
+  std::vector<double> m_stateZ;
+  std::vector<double> m_stateZDca;
+  std::vector<double> m_stateR;
+  std::vector<double> m_statePhi;
+  std::vector<double> m_deltaPhi;
+  std::vector<double> m_residualRPhi;
+  std::vector<double> m_residualZ;
 };
 
 #endif

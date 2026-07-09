@@ -2,6 +2,7 @@
 
 #include "FinalTrack.h"
 #include "FinalTrackContainer.h"
+#include "FinalTrackVertex.h"
 #include "FinalTrackVertexContainer.h"
 #include "TpcPolyClusterTrack.h"
 #include "TpcPolyClusterTrackContainer.h"
@@ -412,10 +413,10 @@ int TpcPolyClusterResiduals::Init(PHCompositeNode*)
   m_tree->Branch("final_track_id", &m_finalTrackId, "final_track_id/i");
   m_tree->Branch("cluster_track_id", &m_clusterTrackId, "cluster_track_id/i");
   m_tree->Branch("source_full_track_id", &m_sourceFullTrackId, "source_full_track_id/i");
-  m_tree->Branch("cluster_index", &m_clusterIndex, "cluster_index/i");
+  m_tree->Branch("cluster_index", &m_clusterIndex);
   m_tree->Branch("side", &m_side, "side/I");
-  m_tree->Branch("sector", &m_sector, "sector/i");
-  m_tree->Branch("layer", &m_layer, "layer/i");
+  m_tree->Branch("sector", &m_sector);
+  m_tree->Branch("layer", &m_layer);
   m_tree->Branch("ntpc_clusters", &m_ntpcClusters, "ntpc_clusters/i");
   m_tree->Branch("fit_status", &m_fitStatus, "fit_status/I");
   m_tree->Branch("pt", &m_pt, "pt/D");
@@ -433,26 +434,30 @@ int TpcPolyClusterResiduals::Init(PHCompositeNode*)
   m_tree->Branch("vertex_y", &m_vertexY, "vertex_y/D");
   m_tree->Branch("vertex_z", &m_vertexZ, "vertex_z/D");
   m_tree->Branch("vertex_r", &m_vertexR, "vertex_r/D");
+  m_tree->Branch("pca_x", &m_pcaX, "pca_x/D");
+  m_tree->Branch("pca_y", &m_pcaY, "pca_y/D");
+  m_tree->Branch("pca_z", &m_pcaZ, "pca_z/D");
   m_tree->Branch("rDCA", &m_rDCA, "rDCA/D");
   m_tree->Branch("rDCA_zero", &m_rDCAZero, "rDCA_zero/D");
+  m_tree->Branch("zDCA", &m_zDCA, "zDCA/D");
   m_tree->Branch("R", &m_R, "R/D");
   m_tree->Branch("rzslope", &m_rzSlope, "rzslope/D");
-  m_tree->Branch("cluster_x", &m_clusterX, "cluster_x/D");
-  m_tree->Branch("cluster_y", &m_clusterY, "cluster_y/D");
-  m_tree->Branch("cluster_z", &m_clusterZ, "cluster_z/D");
-  m_tree->Branch("cluster_r", &m_clusterR, "cluster_r/D");
-  m_tree->Branch("cluster_phi", &m_clusterPhi, "cluster_phi/D");
-  m_tree->Branch("cluster_adc", &m_clusterAdc, "cluster_adc/D");
-  m_tree->Branch("cluster_pad_size", &m_clusterPadSize, "cluster_pad_size/i");
-  m_tree->Branch("state_x", &m_stateX, "state_x/D");
-  m_tree->Branch("state_y", &m_stateY, "state_y/D");
-  m_tree->Branch("state_z", &m_stateZ, "state_z/D");
-  m_tree->Branch("state_z_dca", &m_stateZDca, "state_z_dca/D");
-  m_tree->Branch("state_r", &m_stateR, "state_r/D");
-  m_tree->Branch("state_phi", &m_statePhi, "state_phi/D");
-  m_tree->Branch("delta_phi", &m_deltaPhi, "delta_phi/D");
-  m_tree->Branch("residual_rphi", &m_residualRPhi, "residual_rphi/D");
-  m_tree->Branch("residual_z", &m_residualZ, "residual_z/D");
+  m_tree->Branch("cluster_x", &m_clusterX);
+  m_tree->Branch("cluster_y", &m_clusterY);
+  m_tree->Branch("cluster_z", &m_clusterZ);
+  m_tree->Branch("cluster_r", &m_clusterR);
+  m_tree->Branch("cluster_phi", &m_clusterPhi);
+  m_tree->Branch("cluster_adc", &m_clusterAdc);
+  m_tree->Branch("cluster_pad_size", &m_clusterPadSize);
+  m_tree->Branch("state_x", &m_stateX);
+  m_tree->Branch("state_y", &m_stateY);
+  m_tree->Branch("state_z", &m_stateZ);
+  m_tree->Branch("state_z_dca", &m_stateZDca);
+  m_tree->Branch("state_r", &m_stateR);
+  m_tree->Branch("state_phi", &m_statePhi);
+  m_tree->Branch("delta_phi", &m_deltaPhi);
+  m_tree->Branch("residual_rphi", &m_residualRPhi);
+  m_tree->Branch("residual_z", &m_residualZ);
 
   return Fun4AllReturnCodes::EVENT_OK;
 }
@@ -489,10 +494,7 @@ void TpcPolyClusterResiduals::reset_tree_values()
   m_finalTrackId = 0;
   m_clusterTrackId = 0;
   m_sourceFullTrackId = 0;
-  m_clusterIndex = 0;
   m_side = 0;
-  m_sector = 0xffffffffu;
-  m_layer = 0;
   m_ntpcClusters = 0;
   m_fitStatus = 0;
   m_pt = 0.0;
@@ -510,26 +512,33 @@ void TpcPolyClusterResiduals::reset_tree_values()
   m_vertexY = std::numeric_limits<double>::quiet_NaN();
   m_vertexZ = std::numeric_limits<double>::quiet_NaN();
   m_vertexR = std::numeric_limits<double>::quiet_NaN();
+  m_pcaX = std::numeric_limits<double>::quiet_NaN();
+  m_pcaY = std::numeric_limits<double>::quiet_NaN();
+  m_pcaZ = std::numeric_limits<double>::quiet_NaN();
+  m_zDCA = std::numeric_limits<double>::quiet_NaN();
   m_rDCA = std::numeric_limits<double>::quiet_NaN();
   m_rDCAZero = std::numeric_limits<double>::quiet_NaN();
   m_R = std::numeric_limits<double>::quiet_NaN();
   m_rzSlope = std::numeric_limits<double>::quiet_NaN();
-  m_clusterX = 0.0;
-  m_clusterY = 0.0;
-  m_clusterZ = 0.0;
-  m_clusterR = 0.0;
-  m_clusterPhi = 0.0;
-  m_clusterAdc = 0.0;
-  m_clusterPadSize = 0;
-  m_stateX = 0.0;
-  m_stateY = 0.0;
-  m_stateZ = 0.0;
-  m_stateZDca = std::numeric_limits<double>::quiet_NaN();
-  m_stateR = 0.0;
-  m_statePhi = 0.0;
-  m_deltaPhi = 0.0;
-  m_residualRPhi = 0.0;
-  m_residualZ = std::numeric_limits<double>::quiet_NaN();
+  m_clusterIndex.clear();
+  m_sector.clear();
+  m_layer.clear();
+  m_clusterX.clear();
+  m_clusterY.clear();
+  m_clusterZ.clear();
+  m_clusterR.clear();
+  m_clusterPhi.clear();
+  m_clusterAdc.clear();
+  m_clusterPadSize.clear();
+  m_stateX.clear();
+  m_stateY.clear();
+  m_stateZ.clear();
+  m_stateZDca.clear();
+  m_stateR.clear();
+  m_statePhi.clear();
+  m_deltaPhi.clear();
+  m_residualRPhi.clear();
+  m_residualZ.clear();
 }
 
 int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
@@ -539,11 +548,24 @@ int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
   if (!m_tree) return Fun4AllReturnCodes::EVENT_OK;
 
   std::map<unsigned int, const TpcPolyClusterTrack*> cluster_tracks_by_track_id;
+  std::map<unsigned int, const FinalTrackVertex*> track_vertices_by_track_id;
+  std::map<unsigned int, const FinalTrackVertex*> track_vertices_by_source_full_track_id;
   for (unsigned int itrack = 0; itrack < m_clusterTracks->size(); ++itrack)
   {
     const TpcPolyClusterTrack* trk = m_clusterTracks->get_track(itrack);
     if (!trk || !trk->isValid()) continue;
     cluster_tracks_by_track_id[trk->get_track_id()] = trk;
+  }
+
+  if (m_finalTrackVertices)
+  {
+    for (unsigned int ivtx = 0; ivtx < m_finalTrackVertices->size(); ++ivtx)
+    {
+      const FinalTrackVertex* vtx = m_finalTrackVertices->get_vertex(ivtx);
+      if (!vtx) continue;
+      track_vertices_by_track_id[vtx->get_track_id()] = vtx;
+      track_vertices_by_source_full_track_id[vtx->get_source_full_track_id()] = vtx;
+    }
   }
 
   unsigned int nfilled = 0;
@@ -569,6 +591,20 @@ int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
     if (cluster_iter == cluster_tracks_by_track_id.end()) continue;
 
     const TpcPolyClusterTrack* cluster_track = cluster_iter->second;
+    const FinalTrackVertex* track_vertex = nullptr;
+    const auto vertex_source_iter = track_vertices_by_source_full_track_id.find(final_track->get_source_full_track_id());
+    if (vertex_source_iter != track_vertices_by_source_full_track_id.end())
+    {
+      track_vertex = vertex_source_iter->second;
+    }
+    else
+    {
+      const auto vertex_track_iter = track_vertices_by_track_id.find(final_track->get_track_id());
+      if (vertex_track_iter != track_vertices_by_track_id.end())
+      {
+        track_vertex = vertex_track_iter->second;
+      }
+    }
     const unsigned int ntpc_clusters = cluster_track->size_clusters();
     if (ntpc_clusters < m_minTpcClusters || ntpc_clusters > m_maxTpcClusters) continue;
 
@@ -581,6 +617,10 @@ int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
     double vertex_z = std::numeric_limits<double>::quiet_NaN();
     double rdca = std::numeric_limits<double>::quiet_NaN();
     double rdca_zero = std::numeric_limits<double>::quiet_NaN();
+    double pca_x = std::numeric_limits<double>::quiet_NaN();
+    double pca_y = std::numeric_limits<double>::quiet_NaN();
+    double pca_z = std::numeric_limits<double>::quiet_NaN();
+    double zdca = std::numeric_limits<double>::quiet_NaN();
     const HelixCircle circle = make_track_circle(final_track, m_magneticFieldTesla);
     const double dedx = calc_dedx(cluster_track, circle, m_dedxThicknessPerRegion);
 
@@ -590,6 +630,48 @@ int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
       rdca_zero = std::hypot(circle.xc, circle.yc) - circle.radius;
     }
 
+    if (track_vertex && track_vertex->get_pca_valid())
+    {
+      pca_x = track_vertex->get_pca_x();
+      pca_y = track_vertex->get_pca_y();
+      pca_z = track_vertex->get_pca_z();
+      if (std::isfinite(pca_z) && std::isfinite(vertex_z))
+      {
+        zdca = pca_z - vertex_z;
+      }
+    }
+
+    reset_tree_values();
+    m_event = m_evt;
+    m_finalTrackId = final_track->get_track_id();
+    m_clusterTrackId = cluster_track->get_track_id();
+    m_sourceFullTrackId = final_track->get_source_full_track_id();
+    m_side = cluster_track->get_side();
+    m_ntpcClusters = ntpc_clusters;
+    m_fitStatus = final_track->get_fit_status();
+    m_pt = pt;
+    m_px = px;
+    m_py = py;
+    m_pz = pz;
+    m_eta = eta;
+    m_theta = theta;
+    m_charge = final_track->get_charge();
+    m_chi2 = chi2;
+    m_ndf = ndf;
+    m_quality = quality;
+    m_dedx = dedx;
+    m_vertexX = vertex_x;
+    m_vertexY = vertex_y;
+    m_vertexZ = vertex_z;
+    m_vertexR = std::hypot(vertex_x, vertex_y);
+    m_pcaX = pca_x;
+    m_pcaY = pca_y;
+    m_pcaZ = pca_z;
+    m_rDCA = rdca;
+    m_rDCAZero = rdca_zero;
+    m_zDCA = zdca;
+    m_R = circle.ok ? circle.radius : std::numeric_limits<double>::quiet_NaN();
+    m_rzSlope = circle.ok ? circle.dzds : std::numeric_limits<double>::quiet_NaN();
     for (unsigned int icluster = 0; icluster < ntpc_clusters; ++icluster)
     {
       const double cluster_x = cluster_track->get_cluster_x(icluster);
@@ -609,54 +691,36 @@ int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
         residual_z = cluster_z - state_z;
       }
 
-      reset_tree_values();
-      m_event = m_evt;
-      m_finalTrackId = final_track->get_track_id();
-      m_clusterTrackId = cluster_track->get_track_id();
-      m_sourceFullTrackId = final_track->get_source_full_track_id();
-      m_clusterIndex = icluster;
+      m_clusterIndex.push_back(icluster);
       m_side = cluster_side;
-      m_sector = cluster_sector(cluster_track, icluster);
-      m_layer = cluster_track->get_cluster_layer(icluster);
-      m_ntpcClusters = ntpc_clusters;
-      m_fitStatus = final_track->get_fit_status();
-      m_pt = pt;
-      m_px = px;
-      m_py = py;
-      m_pz = pz;
-      m_eta = eta;
-      m_theta = theta;
-      m_charge = final_track->get_charge();
-      m_chi2 = chi2;
-      m_ndf = ndf;
-      m_quality = quality;
-      m_dedx = dedx;
-      m_vertexX = vertex_x;
-      m_vertexY = vertex_y;
-      m_vertexZ = vertex_z;
-      m_vertexR = std::hypot(vertex_x, vertex_y);
-      m_rDCA = rdca;
-      m_rDCAZero = rdca_zero;
-      m_R = circle.ok ? circle.radius : std::numeric_limits<double>::quiet_NaN();
-      m_rzSlope = circle.ok ? circle.dzds : std::numeric_limits<double>::quiet_NaN();
-      m_clusterX = cluster_x;
-      m_clusterY = cluster_y;
-      m_clusterZ = cluster_z;
-      m_clusterR = std::hypot(cluster_x, cluster_y);
-      m_clusterPhi = std::atan2(cluster_y, cluster_x);
-      m_clusterAdc = cluster_track->get_cluster_adc(icluster);
-      m_clusterPadSize = cluster_track->get_cluster_phi_width(icluster);
-      m_stateX = state_x;
-      m_stateY = state_y;
-      m_stateZ = state_z;
-      m_stateZDca = state_z;
-      m_stateR = std::hypot(state_x, state_y);
-      m_statePhi = std::atan2(state_y, state_x);
-      m_deltaPhi = wrap_phi(m_clusterPhi - m_statePhi);
-      m_residualRPhi = m_clusterR * m_deltaPhi;
-      m_residualZ = residual_z;
-      m_tree->Fill();
+      m_sector.push_back(cluster_sector(cluster_track, icluster));
+      m_layer.push_back(cluster_track->get_cluster_layer(icluster));
+      m_clusterX.push_back(cluster_x);
+      m_clusterY.push_back(cluster_y);
+      m_clusterZ.push_back(cluster_z);
+      const double cluster_r = std::hypot(cluster_x, cluster_y);
+      const double cluster_phi = std::atan2(cluster_y, cluster_x);
+      m_clusterR.push_back(cluster_r);
+      m_clusterPhi.push_back(cluster_phi);
+      m_clusterAdc.push_back(cluster_track->get_cluster_adc(icluster));
+      m_clusterPadSize.push_back(cluster_track->get_cluster_phi_width(icluster));
+      m_stateX.push_back(state_x);
+      m_stateY.push_back(state_y);
+      m_stateZ.push_back(state_z);
+      m_stateZDca.push_back(state_z);
+      m_stateR.push_back(std::hypot(state_x, state_y));
+      const double state_phi = std::atan2(state_y, state_x);
+      m_statePhi.push_back(state_phi);
+      const double delta_phi = wrap_phi(cluster_phi - state_phi);
+      m_deltaPhi.push_back(delta_phi);
+      m_residualRPhi.push_back(cluster_r * delta_phi);
+      m_residualZ.push_back(residual_z);
       ++nfilled;
+    }
+
+    if (!m_clusterIndex.empty())
+    {
+      m_tree->Fill();
     }
   }
 
