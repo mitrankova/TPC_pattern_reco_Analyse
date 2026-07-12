@@ -16,7 +16,6 @@
 #include <TTree.h>
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -438,137 +437,6 @@ namespace
     return n > 0 ? sum / static_cast<double>(n) : std::numeric_limits<double>::max();
   }
 
-  double dedx_thickness_for_layer(const unsigned int layer,
-                                  const std::array<double, 4>& thickness_per_region)
-  {
-    if (layer < 23)
-    {
-      return (layer % 2 == 0) ? thickness_per_region[1] : thickness_per_region[0];
-    }
-    if (layer < 39)
-    {
-      return thickness_per_region[2];
-    }
-    return thickness_per_region[3];
-  }
-
-  double calc_dedx(const TpcPolyClusterTrack* cluster_track,
-                   const HelixCircle& circle,
-                   const std::array<double, 4>& thickness_per_region)
-  {
-    if (!cluster_track || !cluster_track->isValid() || !circle.ok)
-    {
-      return std::numeric_limits<double>::quiet_NaN();
-    }
-
-    std::vector<double> dedxlist;
-    for (unsigned int icluster = 0; icluster < cluster_track->size_clusters(); ++icluster)
-    {
-      const unsigned int layer = cluster_track->get_cluster_layer(icluster);
-      const double thick = dedx_thickness_for_layer(layer, thickness_per_region);
-      const double r = std::hypot(cluster_track->get_cluster_x(icluster),
-                                  cluster_track->get_cluster_y(icluster));
-      double adc = cluster_track->get_cluster_adc(icluster);
-      if (!std::isfinite(adc) || !std::isfinite(thick) || !std::isfinite(r) ||
-          thick <= 0.0 || r <= 0.0 || circle.radius <= 0.0)
-      {
-        continue;
-      }
-
-      const double alpha = (r * r) / (2.0 * r * circle.radius);
-      const double beta = std::atan(circle.dzds);
-      double alphacorr = std::cos(alpha);
-      if (alphacorr < 0.0 || alphacorr > 4.0)
-      {
-        alphacorr = 4.0;
-      }
-      double betacorr = std::cos(beta);
-      if (betacorr < 0.0 || betacorr > 4.0)
-      {
-        betacorr = 4.0;
-      }
-
-      adc /= thick;
-      adc *= alphacorr;
-      adc *= betacorr;
-      dedxlist.push_back(adc);
-      std::sort(dedxlist.begin(), dedxlist.end());
-    }
-
-    if (dedxlist.empty())
-    {
-      return std::numeric_limits<double>::quiet_NaN();
-    }
-
-    const int trunc_min = 0;
-    const int trunc_max = static_cast<int>(dedxlist.size() * 0.7);
-    double sumdedx = 0.0;
-    int ndedx = 0;
-    for (int j = trunc_min; j <= trunc_max; ++j)
-    {
-      sumdedx += dedxlist.at(j);
-      ++ndedx;
-    }
-
-    sumdedx /= static_cast<double>(ndedx);
-    return sumdedx;
-  }
-
-  double calc_dedx_line(const TpcPolyClusterTrack* cluster_track,
-                        const FinalTrack* trk,
-                        const std::array<double, 4>& thickness_per_region)
-  {
-    if (!cluster_track || !cluster_track->isValid() || !trk || trk->get_fit_status() == 0)
-    {
-      return std::numeric_limits<double>::quiet_NaN();
-    }
-
-    const double px = trk->get_px();
-    const double py = trk->get_py();
-    const double pz = trk->get_pz();
-    const double pt = std::hypot(px, py);
-    if (!std::isfinite(pt) || !std::isfinite(pz)) return std::numeric_limits<double>::quiet_NaN();
-
-    const double beta = pt > 0.0 ? std::atan(pz / pt) : std::acos(-1.0) / 2.0;
-    double betacorr = std::cos(beta);
-    if (betacorr < 0.0 || betacorr > 4.0)
-    {
-      betacorr = 4.0;
-    }
-
-    std::vector<double> dedxlist;
-    for (unsigned int icluster = 0; icluster < cluster_track->size_clusters(); ++icluster)
-    {
-      const unsigned int layer = cluster_track->get_cluster_layer(icluster);
-      const double thick = dedx_thickness_for_layer(layer, thickness_per_region);
-      double adc = cluster_track->get_cluster_adc(icluster);
-      if (!std::isfinite(adc) || !std::isfinite(thick) || thick <= 0.0) continue;
-
-      adc /= thick;
-      adc *= betacorr;
-      dedxlist.push_back(adc);
-      std::sort(dedxlist.begin(), dedxlist.end());
-    }
-
-    if (dedxlist.empty())
-    {
-      return std::numeric_limits<double>::quiet_NaN();
-    }
-
-    const int trunc_min = 0;
-    const int trunc_max = static_cast<int>(dedxlist.size() * 0.7);
-    double sumdedx = 0.0;
-    int ndedx = 0;
-    for (int j = trunc_min; j <= trunc_max; ++j)
-    {
-      sumdedx += dedxlist.at(j);
-      ++ndedx;
-    }
-
-    sumdedx /= static_cast<double>(ndedx);
-    return sumdedx;
-  }
-
 }
 
 TpcPolyClusterResiduals::TpcPolyClusterResiduals(const std::string& name,
@@ -815,9 +683,7 @@ int TpcPolyClusterResiduals::process_event(PHCompositeNode* topNode)
     double pca_z = std::numeric_limits<double>::quiet_NaN();
     double zdca = std::numeric_limits<double>::quiet_NaN();
     const HelixCircle circle = use_straight_line ? HelixCircle() : make_track_circle(final_track, m_magneticFieldTesla);
-    const double dedx = use_straight_line ?
-      calc_dedx_line(cluster_track, final_track, m_dedxThicknessPerRegion) :
-      calc_dedx(cluster_track, circle, m_dedxThicknessPerRegion);
+    const double dedx = final_track->get_dedx();
 
     if (use_straight_line)
     {

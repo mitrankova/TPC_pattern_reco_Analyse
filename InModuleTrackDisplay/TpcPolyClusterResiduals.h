@@ -3,7 +3,6 @@
 
 #include <fun4all/SubsysReco.h>
 
-#include <array>
 #include <string>
 #include <vector>
 
@@ -35,10 +34,6 @@ class TpcPolyClusterResiduals : public SubsysReco
   void setMinTpcClusters(unsigned int v) { m_minTpcClusters = v; }
   void setMaxTpcClusters(unsigned int v) { m_maxTpcClusters = v; }
   void setUseStraightLineTracks(bool v) { m_useStraightLineTracks = v; }
-  void setDedxThicknessPerRegion(double inner_odd, double inner_even, double mid, double outer)
-  {
-    m_dedxThicknessPerRegion = {{inner_odd, inner_even, mid, outer}};
-  }
 
  private:
   bool get_nodes(PHCompositeNode* topNode);
@@ -55,7 +50,6 @@ class TpcPolyClusterResiduals : public SubsysReco
   unsigned int m_minTpcClusters {0};
   unsigned int m_maxTpcClusters {0xffffffffu};
   bool m_useStraightLineTracks {false};
-  std::array<double, 4> m_dedxThicknessPerRegion {{1.0, 1.0, 1.0, 1.0}};
 
   unsigned int m_evt {0};
   TFile* m_outfile {nullptr};
@@ -86,10 +80,20 @@ class TpcPolyClusterResiduals : public SubsysReco
   double m_vertexY {0.0};
   double m_vertexZ {0.0};
   double m_vertexR {0.0};
+  double m_collisionXSide0 {0.0};
+  double m_collisionYSide0 {0.0};
+  double m_collisionZSide0 {0.0};
+  double m_collisionXSide1 {0.0};
+  double m_collisionYSide1 {0.0};
+  double m_collisionZSide1 {0.0};
+  double m_collisionXMid {0.0};
+  double m_collisionYMid {0.0};
+  double m_collisionZMid {0.0};
   double m_pcaX {0.0};
   double m_pcaY {0.0};
   double m_pcaZ {0.0};
   double m_zDCA {0.0};
+  double m_zDCAMid {0.0};
   double m_rDCA {0.0};
   double m_rDCAZero {0.0};
   double m_R {0.0};
