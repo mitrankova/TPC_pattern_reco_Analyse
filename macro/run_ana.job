@@ -8,5 +8,5 @@ PeriodicHold       = (NumJobStarts>=1 && JobStatus == 1)
 request_memory     = 4GB
 Priority           = 20
 job_lease_duration = 3600
-Arguments          = 2 $(process) 0
-Queue 185
+Arguments          = 50 $(process) 0
+Queue 180

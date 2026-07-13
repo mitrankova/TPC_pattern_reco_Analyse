@@ -66,6 +66,7 @@ R__LOAD_LIBRARY(libmvtx.so)
 R__LOAD_LIBRARY(libintt.so)
 R__LOAD_LIBRARY(libtpc.so)
 R__LOAD_LIBRARY(libmicromegas.so)
+R__LOAD_LIBRARY(/sphenix/user/mitrankova/F4A/PHGarfield/install/lib/libPHGarfield.so)
 R__LOAD_LIBRARY(/sphenix/user/mitrankova/F4A/TPC_pattern_reco/install/lib/libInModuleTracks.so)
 R__LOAD_LIBRARY(/sphenix/user/mitrankova/F4A/InModuleTrackDisplay/install/lib/libInModuleTrackDisplay.so)
 
@@ -86,7 +87,7 @@ class SkipFirstN : public SubsysReco {
 
 
 //xxxxxxxxxxxxxxxxxxxxxxxxxx  .x Fun4All_raw_hit_ZeroField_frog.C(3, 79513, 0, ".", 0, "run3pp", "ana537_nocdbtag_v001","HITS_ppFieldOn")
-//.x Fun4All_raw_hit_ZeroField_frog.C(2, 79513, 0, ".", 0, "run3pp", "ana532_nocdbtag_v001","HITS_HELIX_ppFieldOn")
+//.x Fun4All_raw_hit_ZeroField_frog.C(2, 79513, 0, ".", 0, "run3pp", "ana532_nocdbtag_v001","HITS_ppFieldOn")
 //.x Fun4All_raw_hit_ZeroField_frog.C(2, 79516, 0, ".", 0, "run3pp", "ana532_nocdbtag_v001","HITS_ppFieldOn")
 
 //==========AuAu Zero Field
@@ -99,7 +100,7 @@ class SkipFirstN : public SubsysReco {
 
 //.x Fun4All_raw_hit_ZeroField_frog.C(10, 75396, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu")
 //.x Fun4All_raw_hit_ZeroField_frog.C(2, 75405, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_AuAu")
-//.x Fun4All_raw_hit_ZeroField_frog.C(10, 76905, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_6x6_1mrad_AuAu")
+//.x Fun4All_raw_hit_ZeroField_frog.C(2, 76905, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_6x6_1mrad_AuAu")
 //.x Fun4All_raw_hit_ZeroField_frog.C(2, 76906, 0, ".", 0, "run3auau", "ana514_nocdbtag_v001","HITS_6x6_0mrad_AuAu")
 
 //.x Fun4All_raw_hit_ZeroField_frog.C(2, 82626, 0, ".", 0, "run3oo", "ana537_nocdbtag_v001","HITS_OO")
@@ -292,11 +293,18 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
   se->registerSubsystem( new FullTrackConnector());
   se->registerSubsystem( new FullTrackVertexer());
  // se->registerSubsystem( new TpcPolyTrackReco());
- // se->registerSubsystem(new TpcPolyClusterizer());       // makes TPCPOLYCLUSTERTRACKS
+  //se->registerSubsystem(new TpcPolyClusterizer());       // makes TPCPOLYCLUSTERTRACKS
+ // se->registerSubsystem( new FullTrackDisplay( "FullTrackDisplay", "full_track_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
+
   auto cluster = new TpcPolyClusterizer();
-  cluster->setT0(6);
-  //cluster->setTpcAdcClock(53.326184);
-  //cluster->setReverseDriftStepNs(53.326184);
+  cluster->setT0(8);
+  cluster->setKEffSide0(0.85);//OO - 5.4
+  cluster->setKEffSide1(1.7);//OO - 5.8
+  cluster->setCMVoltageDefault(380);
+
+  cluster->setMoveTpc(0, 0, 0);
+  cluster->setRotateTpc(0, 0, 0, 0);
+  cluster->setRotateTpc(1, 0, 0, 0);
   se->registerSubsystem(cluster);
 
   se->registerSubsystem(new TpcPolyClusterTrackReco());  // makes FINALTRACKS
@@ -306,7 +314,7 @@ if(collision!="run3line_laser"&&collision!="run3cosmics")
 
 
   se->registerSubsystem(new FinalTrackVertexer());       // makes FINALTRACKVERTICES
-se->registerSubsystem( new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_poly_cluster_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
+ // se->registerSubsystem( new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_poly_cluster_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
 
 //auto display = new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_poly_cluster_display_"+outfilename+"_" + to_string(runnumber) + ".root" );
 //display->setUseStraightLineTracks(true);
@@ -315,7 +323,7 @@ se->registerSubsystem( new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_p
    auto resid = new TpcPolyClusterResiduals("TpcPolyClusterResiduals",
                                          outdir+"/outout_resid/tpc_poly_cluster_residuals"+outfilename+"_" + to_string(runnumber) + to_string(segment) + ".root" );
     resid->setMinPt(0);
-    resid->setMinTpcClusters(15);
+    resid->setMinTpcClusters(20);
     //resid->setUseStraightLineTracks(true);
     se->registerSubsystem(resid);
     
@@ -391,7 +399,7 @@ se->registerSubsystem(poly);
   out->AddNode("FINALTRACKVERTICES");
   out->AddNode("TRKR_CLUSTER");
 
-  //se->registerOutputManager(out);
+  se->registerOutputManager(out);
   
   se->run(nEvents+nSkip);
   se->Print("NODETREE");

@@ -180,8 +180,8 @@ void Fun4All_TPC_Tracking(
    //se->registerSubsystem( new TpcPolyClusterDisplay("TpcPolyClusterDisplay", "tpc_poly_cluster_display_"+outfilename+"_" + to_string(runnumber) + ".root" ));
       auto resid = new TpcPolyClusterResiduals("TpcPolyClusterResiduals",
                                          outdir+"/outout_resid/tpc_poly_cluster_residuals"+outfilename+"_" + to_string(runnumber) + to_string(segment) + ".root" );
-resid->setMinPt(0.2);
-resid->setMinTpcClusters(20);
+resid->setMinPt(0);
+resid->setMinTpcClusters(0);
 se->registerSubsystem(resid);
 
 /*

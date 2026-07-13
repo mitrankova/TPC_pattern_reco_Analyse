@@ -22,8 +22,8 @@ nEvents="$1"
 runnumber=76905
 collision="run3auau"
 cdbtag="ana514_nocdbtag_v001"
-OutDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/76905_19t0
-InDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/76905_19t0/output_DST
+OutDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/76905_GrafCM
+InDir=/sphenix/tg/tg01/hf/mitrankova/PatternReco/76905_GrafCM/output_DST
 segment="$2"
 nSkip="$3"
 
